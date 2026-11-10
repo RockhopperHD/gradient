@@ -90,17 +90,6 @@ function makeWarp(preset, strength, scale) {
     return (x, y, point) => { point[0] = x; point[1] = y; };
   }
 
-  if (preset === "Rows") {
-    const level = strength / 1.5;
-    // Bring out the bands early and ease into the maximum displacement.
-    const amount = 0.19 * (3 * level / (1 + 2 * level)) * (scale / (0.4 + scale));
-    return (x, y, point) => {
-      const stripe = 2 * smooth(clamp(0.5 + 1.6 * Math.sin(15 * Math.PI * y))) - 1;
-      point[0] = x + amount * (0.23 * stripe + 0.35 * (y - 0.5));
-      point[1] = y;
-    };
-  }
-
   // Fade in from zero and keep displacement bounded as the pattern gets denser.
   const sizeGain = scale / (0.65 + scale);
   const amount = strength / 1.5 * 0.32 * sizeGain;
@@ -138,6 +127,9 @@ function makeWarp(preset, strength, scale) {
         offsetY = falloff;
         break;
       }
+      case "Rows":
+        offsetX = steppedOffset(y);
+        break;
       case "Columns":
         offsetY = steppedOffset(x);
         break;
