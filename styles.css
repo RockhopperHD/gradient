@@ -105,25 +105,32 @@ canvas { display: block; width: 100%; height: 100%; border-radius: inherit; }
 .panel[open] > .panel-heading { border-bottom: 1px solid #e4e4e4; }
 .panel[open] > .panel-heading svg { transform: rotate(180deg); }
 .settings, .sliders { border-bottom: 1px solid #e4e4e4; }
-.grid-settings { padding: 4px 24px 12px; }
+.grid-settings > .setting { min-height: 48px; padding: 4px 24px; }
 .grid-settings fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
 #grid-controls:disabled,
-#grid-controls:enabled #grid-border-controls:disabled,
+#grid-controls:enabled #grid-border-controls:disabled > :not(legend),
 #grid-controls:enabled #grid-dot-controls:disabled,
 #grid-controls:enabled #grid-border-controls:enabled .grid-setting:has(input:disabled),
 #grid-controls:enabled #grid-dot-controls:enabled .grid-toggle:has(input:disabled) {
   opacity: .5;
 }
-.grid-settings .grid-group {
-  margin-top: 10px;
-  padding-top: 4px;
+.grid-settings .grid-group { padding: 0 24px 10px; }
+.grid-group legend {
+  position: relative;
+  width: 100%;
+  padding: 12px 0 6px;
+  font-weight: 700;
+}
+.grid-group legend::before {
+  content: "";
+  position: absolute;
+  inset: 0 -24px auto;
   border-top: 1px solid #e4e4e4;
 }
-.grid-group legend { padding: 0 8px 0 0; font-size: 12px; font-weight: 600; color: #555; }
 .grid-settings :is(input, button):disabled { cursor: default; }
 .grid-setting {
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr) 44px;
+  grid-template-columns: 76px minmax(0, 1fr) 44px;
   align-items: center;
   gap: 8px;
   min-height: 32px;
