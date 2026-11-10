@@ -2,6 +2,18 @@
 
 const byId = (id) => document.getElementById(id);
 const canvas = byId("gradient");
+const gridCanvas = byId("grid-preview");
+const gridMode = byId("grid-mode");
+const gridControls = byId("grid-controls");
+const borderControls = byId("grid-border-controls");
+const dotControls = byId("grid-dot-controls");
+const gridSize = byId("grid-size");
+const gridThickness = byId("grid-thickness");
+const gridPadding = byId("grid-padding");
+const borderThickness = byId("grid-border-thickness");
+const gridDots = byId("grid-dots");
+const dotSize = byId("grid-dot-size");
+const gridColors = { line: "FFFFFF", dot: "FFFFFF" };
 const preview = byId("preview");
 const pointLayer = byId("color-points");
 const style = byId("style");
@@ -285,6 +297,71 @@ function render(target, w, h) {
   context.putImageData(image, 0, 0);
 }
 
+function gridLines(start, end, cellSize) {
+  const cells = Math.max(1, Math.round((end - start) / cellSize));
+  return Array.from({ length: cells - 1 }, (_, index) => mix(start, end, (index + 1) / cells));
+}
+
+function drawGrid(context, designWidth, designHeight) {
+  if (gridMode.value === "off") return;
+
+  const bordered = gridMode.value === "bordered";
+  const shortestSide = Math.min(designWidth, designHeight);
+  const padding = bordered ? Math.min(gridPadding.valueAsNumber, shortestSide / 3) : 0;
+  const border = bordered ? Math.min(borderThickness.valueAsNumber, shortestSide / 3) : 0;
+  const start = padding + border / 2;
+  const right = designWidth - start;
+  const bottom = designHeight - start;
+  const columns = gridLines(start, right, gridSize.valueAsNumber);
+  const rows = gridLines(start, bottom, gridSize.valueAsNumber);
+
+  context.save();
+  context.scale(context.canvas.width / designWidth, context.canvas.height / designHeight);
+  context.strokeStyle = "#" + gridColors.line;
+  context.lineWidth = gridThickness.valueAsNumber;
+  context.beginPath();
+  for (const x of columns) {
+    context.moveTo(x, start);
+    context.lineTo(x, bottom);
+  }
+  for (const y of rows) {
+    context.moveTo(start, y);
+    context.lineTo(right, y);
+  }
+  context.stroke();
+
+  if (bordered) {
+    context.lineWidth = border;
+    context.strokeRect(start, start, right - start, bottom - start);
+  }
+
+  if (gridDots.checked) {
+    const radius = dotSize.valueAsNumber / 2;
+    if (bordered) {
+      columns.push(start, right);
+      rows.push(start, bottom);
+    }
+    context.fillStyle = "#" + gridColors.dot;
+    context.beginPath();
+    for (const x of columns) {
+      for (const y of rows) {
+        context.moveTo(x + radius, y);
+        context.arc(x, y, radius, 0, 2 * Math.PI);
+      }
+    }
+    context.fill();
+  }
+  context.restore();
+}
+
+function renderGridPreview(w, h) {
+  if (gridCanvas.width !== canvas.width) gridCanvas.width = canvas.width;
+  if (gridCanvas.height !== canvas.height) gridCanvas.height = canvas.height;
+  const context = gridCanvas.getContext("2d");
+  context.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+  drawGrid(context, w, h);
+}
+
 function queuePreview() {
   if (pendingFrame) return;
   pendingFrame = requestAnimationFrame(() => {
@@ -297,6 +374,7 @@ function queuePreview() {
     preview.style.height = h / longestSide * 100 + "%";
     updatePointHandles();
     render(canvas, Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
+    renderGridPreview(w, h);
   });
 }
 
@@ -703,15 +781,76 @@ for (const input of [width, height]) {
     queuePreview();
   });
 }
-for (const slider of [warp, size, noise]) {
-  const update = () => {
-    const progress = (slider.value - slider.min) / (slider.max - slider.min);
-    slider.style.setProperty("--fill", progress * 100 + "%");
-    queuePreview();
-  };
-  slider.addEventListener("input", update);
-  update();
+function fillSlider(slider) {
+  const progress = (slider.value - slider.min) / (slider.max - slider.min);
+  slider.style.setProperty("--fill", progress * 100 + "%");
 }
+
+for (const slider of [warp, size, noise]) {
+  fillSlider(slider);
+  slider.addEventListener("input", () => {
+    fillSlider(slider);
+    queuePreview();
+  });
+}
+
+function updateGridControls() {
+  gridControls.disabled = gridMode.value === "off";
+  borderControls.hidden = borderControls.disabled = gridMode.value !== "bordered";
+  dotControls.hidden = dotControls.disabled = !gridDots.checked;
+  renderGridPreview(dimension(width), dimension(height));
+}
+
+gridMode.addEventListener("input", updateGridControls);
+gridDots.addEventListener("input", updateGridControls);
+for (const slider of gridControls.querySelectorAll('input[type="range"]')) {
+  const valueLabel = slider.nextElementSibling;
+  const update = () => {
+    fillSlider(slider);
+    valueLabel.value = slider.value + " px";
+  };
+  update();
+  slider.addEventListener("input", () => {
+    update();
+    renderGridPreview(dimension(width), dimension(height));
+  });
+}
+
+for (const [key, id] of [["line", "grid-color"], ["dot", "grid-dot-color"]]) {
+  const field = byId(id);
+  const swatch = byId(id + "-picker");
+  gridColors[key] = field.value;
+  swatch.style.backgroundColor = "#" + gridColors[key];
+  const setColor = (color) => {
+    gridColors[key] = color;
+    swatch.style.backgroundColor = "#" + color;
+    renderGridPreview(dimension(width), dimension(height));
+  };
+  swatch.addEventListener("click", (event) => {
+    event.preventDefault();
+    openPicker(swatch, gridColors[key], (color) => {
+      field.value = color;
+      setColor(color);
+    });
+  });
+  field.addEventListener("input", () => {
+    const candidate = field.value.replace(/^#/, "").toUpperCase();
+    if (/^[0-9A-F]{6}$/.test(candidate)) setColor(candidate);
+  });
+  field.addEventListener("blur", () => { field.value = gridColors[key]; });
+  field.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") field.blur();
+  });
+}
+
+for (const panel of document.querySelectorAll('details[name="canvas-panel"]')) {
+  panel.addEventListener("toggle", () => {
+    if (!panel.open && picker.matches(":popover-open") && panel.contains(activePicker?.swatch)) {
+      picker.hidePopover();
+    }
+  });
+}
+
 byId("import").addEventListener("click", () => upload.click());
 upload.addEventListener("change", () => {
   importPhoto(upload.files[0]);
@@ -746,7 +885,10 @@ download.addEventListener("click", () => {
   download.disabled = true;
   const output = document.createElement("canvas");
   try {
-    render(output, dimension(width), dimension(height));
+    const w = dimension(width);
+    const h = dimension(height);
+    render(output, w, h);
+    drawGrid(output.getContext("2d"), w, h);
     output.toBlob((blob) => {
       download.disabled = false;
       if (!blob) {
@@ -766,4 +908,5 @@ download.addEventListener("click", () => {
   }
 });
 
+updateGridControls();
 showColors();
