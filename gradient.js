@@ -287,10 +287,10 @@ function queuePreview() {
     pendingFrame = 0;
     const w = dimension(width);
     const h = dimension(height);
-    const scale = Math.min(1, 768 / Math.max(w, h));
-    preview.style.aspectRatio = w + " / " + h;
-    preview.style.maxHeight = "min(900px, 135vw)";
-    preview.style.maxWidth = "min(648px, " + (900 * w / h) + "px)";
+    const longestSide = Math.max(w, h);
+    const scale = Math.min(1, 768 / longestSide);
+    preview.style.width = w / longestSide * 100 + "%";
+    preview.style.height = h / longestSide * 100 + "%";
     updatePointHandles();
     render(canvas, Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
   });
