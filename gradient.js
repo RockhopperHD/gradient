@@ -33,11 +33,11 @@ function hash(x, y) {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
 }
 
-function valueNoise(x, y) {
+function valueNoise(x, y, curve = smooth) {
   const ix = Math.floor(x);
   const iy = Math.floor(y);
-  const u = smooth(x - ix);
-  const v = smooth(y - iy);
+  const u = curve(x - ix);
+  const v = curve(y - iy);
   return mix(mix(hash(ix, iy), hash(ix + 1, iy), u),
     mix(hash(ix, iy + 1), hash(ix + 1, iy + 1), u), v);
 }
@@ -63,24 +63,87 @@ function cellNoise(x, y, edges) {
   return edges ? Math.sqrt(next) - Math.sqrt(nearest) : Math.sqrt(nearest);
 }
 
-const wave = Math.sin;
-const warps = {
+const smoother = (t) => t ** 3 * (t * (6 * t - 15) + 10);
+
+function steppedOffset(position) {
+  const band = position * 15;
+  const step = Math.floor(band);
+  return (step + smooth(clamp((band - step) * 4))) / 15 - 0.5;
+}
+
+const diagonalWarps = {
   "Simplex Noise": (x, y) => valueNoise(x + y * 0.58, y - x * 0.58) * 2 - 1,
-  Circular: (x, y, scale) => wave(Math.hypot(x - scale / 2, y - scale / 2) * 4),
   "Value Noise": (x, y) => valueNoise(x, y) * 2 - 1,
-  "Worley Noise": (x, y) => cellNoise(x, y, false) * 2 - 1,
+  "Worley Noise": (x, y) => clamp(cellNoise(x, y, false) * 2 - 1, -1, 1),
   "FBM Noise": (x, y) => valueNoise(x, y) + 0.5 * valueNoise(x * 2, y * 2)
     + 0.25 * valueNoise(x * 4, y * 4) - 0.875,
-  "Voronoi Noise": (x, y) => cellNoise(x, y, true) * 2 - 1,
-  "Domain Warping": (x, y) => valueNoise(x + 2 * valueNoise(x, y), y + 2 * valueNoise(y, x)) * 2 - 1,
-  Waves: (x, y) => wave(3.4 * y + wave(x * 1.7) * 0.8),
-  "Smooth Noise": (x, y) => valueNoise(x * 0.4, y * 0.4) * 2 - 1,
-  Oval: (x, y, scale) => wave(Math.hypot(x - scale / 2, (y - scale / 2) * 2) * 3),
-  Rows: (_x, y) => wave(y * 6),
-  Columns: (x) => wave(x * 6),
-  Flat: () => 0,
-  Gravity: (x, y, scale) => (y / scale) ** 2 * wave((x / scale - 0.5) * 5),
+  "Voronoi Noise": (x, y) => clamp(cellNoise(x, y, true) * 2 - 1, -1, 1),
+  Waves: (x, y) => (Math.sin(3 * x) + Math.sin(3 * y)) / 3
+    + (Math.sin(2.8 * (x - y)) + Math.sin(2.8 * (x + y))) / 6,
+  "Smooth Noise": (x, y) => valueNoise(x, y, smoother) * 2 - 1,
 };
+
+function makeWarp(preset, strength, scale) {
+  if (strength === 0 || scale === 0 || preset === "Flat") {
+    return (x, y, point) => { point[0] = x; point[1] = y; };
+  }
+
+  // Fade in from zero and keep displacement bounded as the pattern gets denser.
+  const sizeGain = scale / (0.65 + scale);
+  const amount = strength / 1.5 * 0.32 * sizeGain;
+  const diagonal = diagonalWarps[preset];
+  if (diagonal) {
+    return (x, y, point) => {
+      const offset = amount * diagonal(x * scale, y * scale);
+      point[0] = x + offset;
+      point[1] = y + offset;
+    };
+  }
+
+  return (x, y, point) => {
+    const dx = x - 0.5;
+    const dy = y - 0.5;
+    let offsetX = 0;
+    let offsetY = 0;
+    switch (preset) {
+      case "Circular": {
+        const phase = Math.hypot(dx, dy) * scale * 4;
+        offsetX = Math.sin(phase);
+        offsetY = Math.cos(phase);
+        break;
+      }
+      case "Domain Warping": {
+        const u = x * scale;
+        const v = y * scale;
+        offsetX = valueNoise(u + valueNoise(u, v), v) * 2 - 1;
+        offsetY = valueNoise(u, v + valueNoise(u + 5, v + 5)) * 2 - 1;
+        break;
+      }
+      case "Oval": {
+        const falloff = 1 - smooth(clamp(Math.hypot(dx, dy * 1.5) * 1.7));
+        offsetX = falloff;
+        offsetY = falloff;
+        break;
+      }
+      case "Rows":
+        offsetX = steppedOffset(y);
+        break;
+      case "Columns":
+        offsetY = steppedOffset(x);
+        break;
+      case "Gravity": {
+        const radius = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx) + radius * scale;
+        const pull = 1 - smooth(clamp(radius / 0.75));
+        offsetX = -dx * pull + Math.cos(angle) * radius * pull;
+        offsetY = -dy * pull + Math.sin(angle) * radius * pull;
+        break;
+      }
+    }
+    point[0] = x + amount * offsetX;
+    point[1] = y + amount * offsetY;
+  };
+}
 
 function makeSampler(palette, mode) {
   if (mode === "Simple") {
@@ -101,25 +164,29 @@ function makeSampler(palette, mode) {
   const soft = mode === "Soft Bézier";
   const mesh = mode === "Mesh Static";
 
-  if (mesh) {
+  if (mesh || sharp || soft) {
     const points = palette.map((color, index) => {
       const row = index < columns ? 0 : 1;
       const count = row === 0 ? top.length : bottom.length;
       const column = row === 0 ? index : index - columns;
+      const position = count === 1 ? 0.5 : column / (count - 1);
       return {
         color,
-        x: count === 1 ? 0.5 : column / (count - 1),
-        y: row === 0 ? 0.12 + (column % 2) * 0.11 : 0.82 - (column % 2) * 0.13,
+        x: mesh ? position : mix(0.12, 0.88, position),
+        y: mesh
+          ? (row === 0 ? 0.12 + (column % 2) * 0.11 : 0.82 - (column % 2) * 0.13)
+          : (row === 0 ? 0.12 : 0.75),
       };
     });
+    const spread = sharp ? 24 : 9;
     return (x, y, output, index, grain) => {
       let red = 0;
       let green = 0;
       let blue = 0;
       let total = 0;
       for (const point of points) {
-        const distance = (x - point.x) ** 2 + (y - point.y) ** 2 + 0.012;
-        const weight = 1 / (distance * distance);
+        const distance = (x - point.x) ** 2 + (y - point.y) ** 2;
+        const weight = mesh ? 1 / (distance + 0.012) ** 2 : Math.exp(-spread * distance);
         red += point.color[0] * weight;
         green += point.color[1] * weight;
         blue += point.color[2] * weight;
@@ -133,20 +200,18 @@ function makeSampler(palette, mode) {
 
   return (x, y, output, index, grain) => {
     const topPosition = clamp(x) * (top.length - 1);
-    const bottomX = sharp ? (x - 0.39) / 0.45 + 0.5 : x;
-    const bottomPosition = clamp(bottomX) * (bottom.length - 1);
+    const bottomPosition = clamp(x) * (bottom.length - 1);
     const topLeft = Math.floor(topPosition);
     const bottomLeft = Math.floor(bottomPosition);
     const topRight = Math.min(topLeft + 1, top.length - 1);
     const bottomRight = Math.min(bottomLeft + 1, bottom.length - 1);
     const topT = topPosition - topLeft;
     const bottomT = bottomPosition - bottomLeft;
-    const blendY = sharp ? smooth(clamp((y - 0.015) / (0.37 + 0.13 * x))) : clamp(y);
-    const t = soft ? smooth(blendY) : blendY;
+    const t = clamp(y);
 
     for (let c = 0; c < 3; c++) {
-      const a = mix(top[topLeft][c], top[topRight][c], soft ? smooth(topT) : topT);
-      const b = mix(bottom[bottomLeft][c], bottom[bottomRight][c], sharp || soft ? smooth(bottomT) : bottomT);
+      const a = mix(top[topLeft][c], top[topRight][c], topT);
+      const b = mix(bottom[bottomLeft][c], bottom[bottomRight][c], bottomT);
       output[index + c] = mix(a, b, t) + grain;
     }
   };
@@ -158,9 +223,8 @@ function render(target, w, h) {
   const context = target.getContext("2d", { alpha: false });
   const image = context.createImageData(w, h);
   const sample = makeSampler(colors.map(rgb), style.value);
-  const deform = warps[shape.value];
-  const amplitude = Number(warp.value) * 0.15;
-  const frequency = 2.4 / Number(size.value);
+  const deform = makeWarp(shape.value, Number(warp.value), Number(size.value));
+  const point = [0, 0];
   const grainAmount = Number(noise.value) * 255;
   const dx = 1 / Math.max(1, w - 1);
   const dy = 1 / Math.max(1, h - 1);
@@ -169,9 +233,8 @@ function render(target, w, h) {
     const y = row * dy;
     for (let column = 0; column < w; column++, index += 4) {
       const x = column * dx;
-      const u = x + amplitude * deform(x * frequency, y * frequency, frequency);
-      const v = y + amplitude * deform(y * frequency, x * frequency, frequency);
-      sample(u, v, image.data, index, (hash(column, row) - 0.5) * grainAmount);
+      deform(x, y, point);
+      sample(point[0], point[1], image.data, index, (hash(column, row) - 0.5) * grainAmount);
       image.data[index + 3] = 255;
     }
   }
