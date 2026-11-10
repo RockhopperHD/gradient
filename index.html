@@ -6,8 +6,8 @@
   <meta name="description" content="Turn photos into editable mesh gradients and export them as PNGs.">
   <title>Image to Mesh Gradient</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=4">
-  <script defer src="gradient.js?v=4"></script>
+  <link rel="stylesheet" href="styles.css?v=5">
+  <script defer src="gradient.js?v=5"></script>
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -94,44 +94,57 @@
             </span>
           </label>
           <fieldset id="grid-controls" disabled aria-label="Grid settings">
-            <div class="grid-setting"><label for="grid-color">Grid Color</label>
-              <span class="grid-color">
-                <button class="swatch" id="grid-color-picker" type="button" aria-label="Pick grid color" aria-haspopup="dialog" aria-expanded="false" popovertarget="color-picker"></button>
-                <input class="hex" id="grid-color" value="FFFFFF" maxlength="7" spellcheck="false" aria-label="Grid color hex">
-              </span>
-            </div>
-            <label class="grid-setting">Grid Size
-              <input id="grid-size" type="range" min="12" max="256" value="48">
-              <output for="grid-size">48 px</output>
-            </label>
-            <label class="grid-setting">Grid Thickness
-              <input id="grid-thickness" type="range" min="0.5" max="16" step="0.5" value="1">
-              <output for="grid-thickness">1 px</output>
-            </label>
-            <fieldset id="grid-border-controls" disabled hidden aria-label="Border settings">
+            <fieldset class="grid-group">
+              <legend>Lines</legend>
+              <div class="grid-setting"><label for="grid-color">Grid Color</label>
+                <span class="grid-color">
+                  <button class="swatch" id="grid-color-picker" type="button" aria-label="Pick grid color" aria-haspopup="dialog" aria-expanded="false" popovertarget="color-picker"></button>
+                  <input class="hex" id="grid-color" value="FFFFFF" maxlength="7" spellcheck="false" aria-label="Grid color hex">
+                </span>
+              </div>
+              <label class="grid-setting">Grid Size
+                <input id="grid-size" type="range" min="12" max="256" value="48">
+                <output for="grid-size">48 px</output>
+              </label>
+              <label class="grid-setting">Grid Thickness
+                <input id="grid-thickness" type="range" min="0.5" max="16" step="0.5" value="1">
+                <output for="grid-thickness">1 px</output>
+              </label>
+            </fieldset>
+            <fieldset class="grid-group" id="grid-border-controls" disabled>
+              <legend>Border</legend>
               <label class="grid-setting">Border Padding
                 <input id="grid-padding" type="range" min="0" max="192" value="24">
                 <output for="grid-padding">24 px</output>
               </label>
-              <label class="grid-setting">Border Thickness
-                <input id="grid-border-thickness" type="range" min="0.5" max="24" step="0.5" value="2">
-                <output for="grid-border-thickness">2 px</output>
+              <label class="setting grid-toggle">Match grid thickness
+                <input id="grid-match-thickness" type="checkbox" checked>
+              </label>
+              <label class="grid-setting">Thickness
+                <input id="grid-border-thickness" aria-label="Border thickness" type="range" min="0.5" max="24" step="0.5" value="1" disabled>
+                <output for="grid-border-thickness">1 px</output>
               </label>
             </fieldset>
-            <label class="setting grid-toggle">Intersection Dots
-              <input id="grid-dots" type="checkbox">
-            </label>
-            <fieldset id="grid-dot-controls" disabled hidden aria-label="Dot settings">
-              <div class="grid-setting"><label for="grid-dot-color">Dot Color</label>
-                <span class="grid-color">
-                  <button class="swatch" id="grid-dot-color-picker" type="button" aria-label="Pick dot color" aria-haspopup="dialog" aria-expanded="false" popovertarget="color-picker"></button>
-                  <input class="hex" id="grid-dot-color" value="FFFFFF" maxlength="7" spellcheck="false" aria-label="Dot color hex">
-                </span>
-              </div>
-              <label class="grid-setting">Dot Diameter
-                <input id="grid-dot-size" type="range" min="1" max="32" step="0.5" value="4">
-                <output for="grid-dot-size">4 px</output>
+            <fieldset class="grid-group">
+              <legend>Intersection Dots</legend>
+              <label class="setting grid-toggle">Show dots
+                <input id="grid-dots" type="checkbox">
               </label>
+              <fieldset id="grid-dot-controls" disabled aria-label="Dot settings">
+                <label class="setting grid-toggle">Dots on border
+                  <input id="grid-border-dots" type="checkbox" checked disabled>
+                </label>
+                <div class="grid-setting"><label for="grid-dot-color">Dot Color</label>
+                  <span class="grid-color">
+                    <button class="swatch" id="grid-dot-color-picker" type="button" aria-label="Pick dot color" aria-haspopup="dialog" aria-expanded="false" popovertarget="color-picker"></button>
+                    <input class="hex" id="grid-dot-color" value="FFFFFF" maxlength="7" spellcheck="false" aria-label="Dot color hex">
+                  </span>
+                </div>
+                <label class="grid-setting">Dot Diameter
+                  <input id="grid-dot-size" type="range" min="1" max="32" step="0.5" value="4">
+                  <output for="grid-dot-size">4 px</output>
+                </label>
+              </fieldset>
             </fieldset>
           </fieldset>
         </div>

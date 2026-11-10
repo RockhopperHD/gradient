@@ -11,7 +11,9 @@ const gridSize = byId("grid-size");
 const gridThickness = byId("grid-thickness");
 const gridPadding = byId("grid-padding");
 const borderThickness = byId("grid-border-thickness");
+const matchThickness = byId("grid-match-thickness");
 const gridDots = byId("grid-dots");
+const borderDots = byId("grid-border-dots");
 const dotSize = byId("grid-dot-size");
 const gridColors = { line: "FFFFFF", dot: "FFFFFF" };
 const preview = byId("preview");
@@ -337,7 +339,7 @@ function drawGrid(context, designWidth, designHeight) {
 
   if (gridDots.checked) {
     const radius = dotSize.valueAsNumber / 2;
-    if (bordered) {
+    if (bordered && borderDots.checked) {
       columns.push(start, right);
       rows.push(start, bottom);
     }
@@ -794,25 +796,37 @@ for (const slider of [warp, size, noise]) {
   });
 }
 
+const gridSliders = gridControls.querySelectorAll('input[type="range"]');
+let customBorderThickness = matchThickness.checked ? undefined : borderThickness.value;
+
 function updateGridControls() {
+  const bordered = gridMode.value === "bordered";
   gridControls.disabled = gridMode.value === "off";
-  borderControls.hidden = borderControls.disabled = gridMode.value !== "bordered";
-  dotControls.hidden = dotControls.disabled = !gridDots.checked;
+  borderControls.disabled = !bordered;
+  dotControls.disabled = !gridDots.checked;
+  borderDots.disabled = !bordered;
+  borderThickness.disabled = matchThickness.checked;
+  borderThickness.value = matchThickness.checked ? gridThickness.value : (customBorderThickness ?? gridThickness.value);
+
+  for (const slider of gridSliders) {
+    fillSlider(slider);
+    slider.nextElementSibling.value = slider.value + " px";
+  }
   renderGridPreview(dimension(width), dimension(height));
 }
 
 gridMode.addEventListener("input", updateGridControls);
-gridDots.addEventListener("input", updateGridControls);
-for (const slider of gridControls.querySelectorAll('input[type="range"]')) {
-  const valueLabel = slider.nextElementSibling;
-  const update = () => {
-    fillSlider(slider);
-    valueLabel.value = slider.value + " px";
-  };
-  update();
+for (const toggle of [gridDots, borderDots]) {
+  toggle.addEventListener("input", updateGridControls);
+}
+matchThickness.addEventListener("input", () => {
+  if (!matchThickness.checked) customBorderThickness ??= gridThickness.value;
+  updateGridControls();
+});
+for (const slider of gridSliders) {
   slider.addEventListener("input", () => {
-    update();
-    renderGridPreview(dimension(width), dimension(height));
+    if (slider === borderThickness) customBorderThickness = slider.value;
+    updateGridControls();
   });
 }
 
