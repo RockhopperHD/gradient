@@ -12,6 +12,10 @@ const warp = byId("warp");
 const size = byId("size");
 const noise = byId("noise");
 const list = byId("colors");
+const picker = byId("color-picker");
+const pickerSquare = byId("picker-square");
+const pickerMarker = byId("picker-marker");
+const hueSlider = byId("picker-hue");
 const status = byId("status");
 const upload = byId("photo-input");
 const download = byId("download");
@@ -368,7 +372,113 @@ function makePointHandle(index) {
   return handle;
 }
 
+let activePicker;
+let pickerColor;
+
+function toHsv(color) {
+  const [red, green, blue] = rgb(color).map((channel) => channel / 255);
+  const value = Math.max(red, green, blue);
+  const chroma = value - Math.min(red, green, blue);
+  let sector = 0;
+  if (chroma) {
+    if (value === red) sector = (green - blue) / chroma;
+    else if (value === green) sector = 2 + (blue - red) / chroma;
+    else sector = 4 + (red - green) / chroma;
+  }
+  return { hue: (sector * 60 + 360) % 360, saturation: value ? chroma / value : 0, value };
+}
+
+function fromHsv({ hue, saturation, value }) {
+  const sector = hue / 60;
+  const chroma = value * saturation;
+  const middle = chroma * (1 - Math.abs(sector % 2 - 1));
+  const channels = [
+    [chroma, middle, 0], [middle, chroma, 0], [0, chroma, middle],
+    [0, middle, chroma], [middle, 0, chroma], [chroma, 0, middle],
+  ][Math.floor(sector)];
+  return hex(channels.map((channel) => clamp(channel + value - chroma) * 255));
+}
+
+function updatePicker() {
+  const { hue, saturation, value } = pickerColor;
+  pickerSquare.style.setProperty("--picker-hue", "hsl(" + hue + " 100% 50%)");
+  pickerMarker.style.left = saturation * 100 + "%";
+  pickerMarker.style.top = (1 - value) * 100 + "%";
+  hueSlider.value = Math.min(359, Math.round(hue));
+  pickerSquare.setAttribute("aria-valuenow", Math.round(saturation * 100));
+  pickerSquare.setAttribute("aria-valuetext",
+    Math.round(saturation * 100) + "% saturation, " + Math.round(value * 100) + "% brightness");
+}
+
+function positionPicker() {
+  if (!activePicker || !picker.matches(":popover-open")) return;
+  const anchor = activePicker.swatch.getBoundingClientRect();
+  const gap = 6;
+  const margin = 8;
+  const above = anchor.top - picker.offsetHeight - gap;
+  const top = above >= margin ? above : anchor.bottom + gap;
+  picker.style.left = clamp(anchor.left, margin, window.innerWidth - picker.offsetWidth - margin) + "px";
+  picker.style.top = clamp(top, margin, window.innerHeight - picker.offsetHeight - margin) + "px";
+}
+
+function openPicker(swatch, color, apply) {
+  if (picker.matches(":popover-open")) {
+    picker.hidePopover();
+    if (activePicker?.swatch === swatch) return;
+  }
+  activePicker?.swatch.setAttribute("aria-expanded", "false");
+  activePicker = { swatch, apply };
+  pickerColor = toHsv(color);
+  updatePicker();
+  swatch.setAttribute("aria-expanded", "true");
+  picker.showPopover({ source: swatch });
+  positionPicker();
+}
+
+picker.addEventListener("toggle", () => {
+  if (picker.matches(":popover-open")) return;
+  activePicker?.swatch.setAttribute("aria-expanded", "false");
+  activePicker = undefined;
+});
+window.addEventListener("resize", positionPicker);
+window.addEventListener("scroll", positionPicker, { capture: true, passive: true });
+
+function applyPickerColor() {
+  updatePicker();
+  activePicker.apply(fromHsv(pickerColor));
+}
+
+function pickSquarePosition(event) {
+  const bounds = pickerSquare.getBoundingClientRect();
+  pickerColor.saturation = clamp((event.clientX - bounds.left) / bounds.width);
+  pickerColor.value = 1 - clamp((event.clientY - bounds.top) / bounds.height);
+  applyPickerColor();
+}
+
+pickerSquare.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || !event.isPrimary) return;
+  pickerSquare.setPointerCapture(event.pointerId);
+  pickSquarePosition(event);
+});
+pickerSquare.addEventListener("pointermove", (event) => {
+  if (pickerSquare.hasPointerCapture(event.pointerId)) pickSquarePosition(event);
+});
+pickerSquare.addEventListener("keydown", (event) => {
+  const offset = arrowOffsets[event.key];
+  if (!offset) return;
+  event.preventDefault();
+  const step = event.shiftKey ? 0.05 : 0.01;
+  pickerColor.saturation = clamp(pickerColor.saturation + offset[0] * step);
+  pickerColor.value = clamp(pickerColor.value - offset[1] * step);
+  applyPickerColor();
+});
+hueSlider.addEventListener("input", () => {
+  pickerColor.hue = hueSlider.valueAsNumber;
+  applyPickerColor();
+});
+
 function showColors() {
+  if (picker.matches(":popover-open")) picker.hidePopover();
   list.replaceChildren();
   pointLayer.replaceChildren(...colors.map((_, index) => makePointHandle(index)));
   updatePointHandles();
@@ -377,11 +487,14 @@ function showColors() {
     const row = document.createElement("li");
     row.className = "color-row";
 
-    const swatch = document.createElement("input");
+    const swatch = document.createElement("button");
     swatch.className = "swatch";
-    swatch.type = "color";
-    swatch.value = "#" + value;
+    swatch.type = "button";
+    swatch.style.backgroundColor = "#" + value;
     swatch.setAttribute("aria-label", "Pick color " + (index + 1));
+    swatch.setAttribute("aria-haspopup", "dialog");
+    swatch.setAttribute("aria-expanded", "false");
+    swatch.setAttribute("popovertarget", picker.id);
 
     const field = document.createElement("input");
     field.className = "hex";
@@ -397,17 +510,21 @@ function showColors() {
     remove.disabled = colors.length <= 2;
     remove.append(removeIcon());
 
-    swatch.addEventListener("input", () => {
-      colors[index] = swatch.value.slice(1).toUpperCase();
-      field.value = colors[index];
+    const setColor = (color) => {
+      colors[index] = color;
+      swatch.style.backgroundColor = "#" + color;
       queuePreview();
+    };
+    swatch.addEventListener("click", (event) => {
+      event.preventDefault();
+      openPicker(swatch, colors[index], (color) => {
+        setColor(color);
+        field.value = color;
+      });
     });
     field.addEventListener("input", () => {
       const candidate = field.value.replace(/^#/, "").toUpperCase();
-      if (!/^[0-9A-F]{6}$/.test(candidate)) return;
-      colors[index] = candidate;
-      swatch.value = "#" + candidate;
-      queuePreview();
+      if (/^[0-9A-F]{6}$/.test(candidate)) setColor(candidate);
     });
     field.addEventListener("blur", () => { field.value = colors[index]; });
     field.addEventListener("keydown", (event) => {

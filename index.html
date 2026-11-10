@@ -74,6 +74,14 @@
         </div>
         <input id="photo-input" type="file" accept="image/*" hidden>
         <ul id="colors"></ul>
+        <div id="color-picker" popover role="dialog" aria-label="Color picker">
+          <div id="picker-square" tabindex="0" autofocus role="slider"
+            aria-label="Saturation and brightness. Use left and right for saturation, up and down for brightness."
+            aria-valuemin="0" aria-valuemax="100">
+            <span id="picker-marker" aria-hidden="true"></span>
+          </div>
+          <input id="picker-hue" type="range" min="0" max="359" step="1" aria-label="Hue">
+        </div>
         <p id="status" role="status" hidden></p>
       </div>
 
