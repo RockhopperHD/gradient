@@ -3,6 +3,7 @@
 const byId = (id) => document.getElementById(id);
 const canvas = byId("gradient");
 const preview = byId("preview");
+const pointLayer = byId("color-points");
 const style = byId("style");
 const shape = byId("shape");
 const width = byId("width");
@@ -17,6 +18,7 @@ const download = byId("download");
 const maxColors = 12;
 
 let colors = ["92B3C9", "C6D1D1", "7B8E54", "F66E56", "F96656", "F3F4EC"];
+const movedPoints = [];
 let pendingFrame = 0;
 let importSequence = 0;
 
@@ -145,7 +147,48 @@ function makeWarp(preset, strength, scale) {
   };
 }
 
-function makeSampler(palette, mode) {
+function defaultPoint(index, count, mode) {
+  if (mode === "Simple") {
+    const position = index / (count - 1);
+    return { x: position, y: position };
+  }
+
+  const columns = Math.ceil(count / 2);
+  const isTop = index < columns;
+  const column = isTop ? index : index - columns;
+  const rowLength = isTop ? columns : count - columns;
+  const position = rowLength === 1 ? 0.5 : column / (rowLength - 1);
+  if (mode === "Mesh Static") {
+    return { x: position, y: isTop ? 0.12 + (column % 2) * 0.11 : 0.82 - (column % 2) * 0.13 };
+  }
+  if (mode === "Mesh Grid") return { x: position, y: isTop ? 0 : 1 };
+  return { x: mix(0.12, 0.88, position), y: isTop ? 0.12 : 0.75 };
+}
+
+function withMovedPoints(sample, points) {
+  // Simple and Mesh Grid interpolate on a fixed layout. Map the moved handles
+  // back to that layout so they can reshape it without changing the blend mode.
+  const offsets = points.map(({ position, origin }) => ({
+    position,
+    dx: origin.x - position.x,
+    dy: origin.y - position.y,
+  }));
+  return (x, y, output, index, grain) => {
+    let dx = 0;
+    let dy = 0;
+    let total = 0;
+    for (const offset of offsets) {
+      const distance = (x - offset.position.x) ** 2 + (y - offset.position.y) ** 2;
+      const weight = 1 / (distance + 0.0001);
+      dx += offset.dx * weight;
+      dy += offset.dy * weight;
+      total += weight;
+    }
+    sample(x + dx / total, y + dy / total, output, index, grain);
+  };
+}
+
+function makeSampler(palette, mode, points) {
   if (mode === "Simple") {
     return (x, y, output, index, grain) => {
       const position = clamp(x * 0.65 + y * 0.35) * (palette.length - 1);
@@ -165,31 +208,18 @@ function makeSampler(palette, mode) {
   const mesh = mode === "Mesh Static";
 
   if (mesh || sharp || soft) {
-    const points = palette.map((color, index) => {
-      const row = index < columns ? 0 : 1;
-      const count = row === 0 ? top.length : bottom.length;
-      const column = row === 0 ? index : index - columns;
-      const position = count === 1 ? 0.5 : column / (count - 1);
-      return {
-        color,
-        x: mesh ? position : mix(0.12, 0.88, position),
-        y: mesh
-          ? (row === 0 ? 0.12 + (column % 2) * 0.11 : 0.82 - (column % 2) * 0.13)
-          : (row === 0 ? 0.12 : 0.75),
-      };
-    });
     const spread = sharp ? 24 : 9;
     return (x, y, output, index, grain) => {
       let red = 0;
       let green = 0;
       let blue = 0;
       let total = 0;
-      for (const point of points) {
-        const distance = (x - point.x) ** 2 + (y - point.y) ** 2;
+      for (const { color, position } of points) {
+        const distance = (x - position.x) ** 2 + (y - position.y) ** 2;
         const weight = mesh ? 1 / (distance + 0.012) ** 2 : Math.exp(-spread * distance);
-        red += point.color[0] * weight;
-        green += point.color[1] * weight;
-        blue += point.color[2] * weight;
+        red += color[0] * weight;
+        green += color[1] * weight;
+        blue += color[2] * weight;
         total += weight;
       }
       output[index] = red / total + grain;
@@ -222,7 +252,17 @@ function render(target, w, h) {
   target.height = h;
   const context = target.getContext("2d", { alpha: false });
   const image = context.createImageData(w, h);
-  const sample = makeSampler(colors.map(rgb), style.value);
+  const mode = style.value;
+  const palette = colors.map(rgb);
+  const points = palette.map((color, index) => {
+    const origin = defaultPoint(index, palette.length, mode);
+    return { color, origin, position: movedPoints[index] ?? origin };
+  });
+  const baseSample = makeSampler(palette, mode, points);
+  let sample = baseSample;
+  if ((mode === "Simple" || mode === "Mesh Grid") && movedPoints.some(Boolean)) {
+    sample = withMovedPoints(baseSample, points);
+  }
   const deform = makeWarp(shape.value, Number(warp.value), Number(size.value));
   const point = [0, 0];
   const grainAmount = Number(noise.value) * 255;
@@ -251,6 +291,7 @@ function queuePreview() {
     preview.style.aspectRatio = w + " / " + h;
     preview.style.maxHeight = "min(900px, 135vw)";
     preview.style.maxWidth = "min(648px, " + (900 * w / h) + "px)";
+    updatePointHandles();
     render(canvas, Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
   });
 }
@@ -268,8 +309,69 @@ function removeIcon() {
   return svg;
 }
 
+function updatePointHandles() {
+  colors.forEach((color, index) => {
+    const handle = pointLayer.children[index];
+    const position = movedPoints[index] ?? defaultPoint(index, colors.length, style.value);
+    handle.style.left = position.x * 100 + "%";
+    handle.style.top = position.y * 100 + "%";
+    handle.style.setProperty("--point-color", "#" + color);
+    handle.setAttribute("aria-label", "Move color " + (index + 1) + ", #" + color);
+  });
+}
+
+function movePoint(index, x, y) {
+  movedPoints[index] = { x: clamp(x), y: clamp(y) };
+  queuePreview();
+}
+
+const arrowOffsets = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+};
+
+function makePointHandle(index) {
+  const handle = document.createElement("button");
+  handle.type = "button";
+  handle.className = "color-point";
+  let drag;
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || drag) return;
+    const center = handle.getBoundingClientRect();
+    drag = {
+      id: event.pointerId,
+      dx: event.clientX - center.left - center.width / 2,
+      dy: event.clientY - center.top - center.height / 2,
+    };
+    handle.setPointerCapture(event.pointerId);
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (drag?.id !== event.pointerId) return;
+    const bounds = pointLayer.getBoundingClientRect();
+    movePoint(index, (event.clientX - bounds.left - drag.dx) / bounds.width,
+      (event.clientY - bounds.top - drag.dy) / bounds.height);
+  });
+  handle.addEventListener("lostpointercapture", (event) => {
+    if (drag?.id === event.pointerId) drag = undefined;
+  });
+  handle.addEventListener("keydown", (event) => {
+    const offset = arrowOffsets[event.key];
+    if (!offset) return;
+    event.preventDefault();
+    const point = movedPoints[index] ?? defaultPoint(index, colors.length, style.value);
+    const step = event.shiftKey ? 0.05 : 0.01;
+    movePoint(index, point.x + offset[0] * step, point.y + offset[1] * step);
+  });
+  return handle;
+}
+
 function showColors() {
   list.replaceChildren();
+  pointLayer.replaceChildren(...colors.map((_, index) => makePointHandle(index)));
+  updatePointHandles();
   byId("add").disabled = colors.length >= maxColors;
   colors.forEach((value, index) => {
     const row = document.createElement("li");
@@ -313,6 +415,7 @@ function showColors() {
     });
     remove.addEventListener("click", () => {
       colors.splice(index, 1);
+      movedPoints.splice(index, 1);
       showColors();
       list.children[Math.min(index, colors.length - 1)].querySelector(".hex").focus();
     });
@@ -350,6 +453,7 @@ async function importPhoto(file) {
       }
       return hex(totals.map((value) => value / 900));
     });
+    movedPoints.length = 0;
     showColors();
   } catch {
     if (sequence === importSequence) setStatus("This image couldn’t be opened. Try a PNG or JPEG.");

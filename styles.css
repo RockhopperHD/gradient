@@ -25,15 +25,48 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .preview {
   position: relative;
   width: min(648px, calc(100vw - 360px));
-  overflow: hidden;
   border-radius: 32px;
   box-shadow: 0 1px 4px #0002, 0 5px 8px #0002, 0 12px 20px #0002;
 }
-canvas { display: block; width: 100%; height: 100%; }
+canvas { display: block; width: 100%; height: 100%; border-radius: inherit; }
+.color-points { position: absolute; inset: 0; pointer-events: none; }
+.color-point {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.color-point::before {
+  content: "";
+  width: 15px;
+  height: 15px;
+  background: var(--point-color);
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 1px 5px #0006;
+}
+.preview:hover .color-point,
+.preview:has(.color-point:focus-visible, .color-point:active) .color-point {
+  opacity: 1;
+  pointer-events: auto;
+}
+.color-point:active { cursor: grabbing; z-index: 1; }
+@media (any-pointer: coarse) {
+  .color-point { opacity: 1; pointer-events: auto; }
+}
 .drop-hint { display: none; }
 .preview[data-drop] .drop-hint {
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   display: grid;
   place-items: center;
   background: #0007;
