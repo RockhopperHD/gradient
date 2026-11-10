@@ -305,12 +305,13 @@ function setStatus(message = "") {
   status.hidden = !message;
 }
 
-function rowIcon(name) {
+function rowIcon(pathData) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  const use = document.createElementNS(svg.namespaceURI, "use");
-  use.setAttribute("href", "#" + name);
+  const path = document.createElementNS(svg.namespaceURI, "path");
+  svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("aria-hidden", "true");
-  svg.append(use);
+  path.setAttribute("d", pathData);
+  svg.append(path);
   return svg;
 }
 
@@ -522,7 +523,7 @@ function makeRowGrip(row, index) {
   grip.className = "icon row-grip";
   grip.title = "Drag to reorder";
   grip.setAttribute("aria-label", "Reorder color " + (index + 1) + ". Use Up and Down to move.");
-  grip.append(rowIcon("grip"));
+  grip.append(rowIcon("M5 6h14M5 12h14M5 18h14"));
 
   grip.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || !event.isPrimary || colorDrag) return;
@@ -583,7 +584,7 @@ function showColors() {
     remove.setAttribute("aria-label", "Remove color " + (index + 1));
     remove.title = "Remove color";
     remove.disabled = colors.length <= 2;
-    remove.append(rowIcon("minus"));
+    remove.append(rowIcon("M5 12h14"));
 
     const duplicate = document.createElement("button");
     duplicate.type = "button";
@@ -591,7 +592,7 @@ function showColors() {
     duplicate.setAttribute("aria-label", "Duplicate color " + (index + 1));
     duplicate.title = "Duplicate color";
     duplicate.disabled = colors.length >= maxColors;
-    duplicate.append(rowIcon("plus"));
+    duplicate.append(rowIcon("M12 5v14M5 12h14"));
 
     const actions = document.createElement("div");
     actions.className = "row-actions";
