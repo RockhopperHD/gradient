@@ -493,25 +493,44 @@ function finishColorDrag(event, commit) {
   if (colorDrag?.pointerId !== event.pointerId) return;
   const { from, to, row } = colorDrag;
   colorDrag = undefined;
-  delete row.dataset.dragging;
 
-  if (from === to) return;
-  if (commit) {
-    moveColor(from, to);
+  const rows = Array.from(list.children);
+  const positions = rows.map((item) => item.getBoundingClientRect().top);
+  const target = commit ? to : from;
+  if (target !== from) {
+    positions.splice(target, 0, positions.splice(from, 1)[0]);
+    moveColor(from, target);
   } else {
-    showColors();
-    list.children[from].querySelector(".row-grip").focus({ preventScroll: true });
+    delete row.dataset.dragging;
+    rows.forEach((item) => item.style.removeProperty("--row-offset"));
   }
+
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || target === from) return;
+  Array.from(list.children).forEach((item, index) => {
+    const offset = positions[index] - item.getBoundingClientRect().top;
+    if (Math.abs(offset) < 1 && index !== target) return;
+    item.animate([
+      { transform: "translateY(" + offset + "px)" + (index === target ? " scale(1.025)" : "") },
+      { transform: "translateY(0)" },
+    ], { duration: 170, easing: "cubic-bezier(.2,.8,.2,1)" });
+  });
 }
 
 list.addEventListener("pointermove", (event) => {
   if (colorDrag?.pointerId !== event.pointerId) return;
   const { from, to, row, startY, rowHeight } = colorDrag;
   const distance = event.clientY - list.getBoundingClientRect().top - startY;
+  row.style.setProperty("--row-offset", distance + "px");
+
   const next = clamp(from + Math.round(distance / rowHeight), 0, colors.length - 1);
   if (next === to) return;
-  const sibling = list.children[next + (next > to ? 1 : 0)] ?? null;
-  list.insertBefore(row, sibling);
+  Array.from(list.children).forEach((item, index) => {
+    if (index === from) return;
+    let shift = 0;
+    if (index > from && index <= next) shift = -rowHeight;
+    if (index < from && index >= next) shift = rowHeight;
+    item.style.setProperty("--row-offset", shift + "px");
+  });
   colorDrag.to = next;
 });
 list.addEventListener("pointerup", (event) => finishColorDrag(event, true));
@@ -523,7 +542,10 @@ function makeRowGrip(row, index) {
   grip.className = "icon row-grip";
   grip.title = "Drag to reorder";
   grip.setAttribute("aria-label", "Reorder color " + (index + 1) + ". Use Up and Down to move.");
-  grip.append(rowIcon("M5 6h14M5 12h14M5 18h14"));
+  const dots = document.createElement("span");
+  dots.className = "grip-dots";
+  dots.setAttribute("aria-hidden", "true");
+  grip.append(dots);
 
   grip.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || !event.isPrimary || colorDrag) return;
