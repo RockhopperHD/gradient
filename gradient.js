@@ -305,10 +305,11 @@ function setStatus(message = "") {
   status.hidden = !message;
 }
 
-function removeIcon() {
+function rowIcon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   const use = document.createElementNS(svg.namespaceURI, "use");
-  use.setAttribute("href", "#close");
+  use.setAttribute("href", "#" + name);
+  svg.setAttribute("aria-hidden", "true");
   svg.append(use);
   return svg;
 }
@@ -477,7 +478,80 @@ hueSlider.addEventListener("input", () => {
   applyPickerColor();
 });
 
+let colorDrag;
+
+function moveColor(from, to) {
+  movedPoints.length = colors.length;
+  colors.splice(to, 0, colors.splice(from, 1)[0]);
+  movedPoints.splice(to, 0, movedPoints.splice(from, 1)[0]);
+  showColors();
+  list.children[to].querySelector(".row-grip").focus({ preventScroll: true });
+}
+
+function finishColorDrag(event, commit) {
+  if (colorDrag?.pointerId !== event.pointerId) return;
+  const { from, to, row } = colorDrag;
+  colorDrag = undefined;
+  delete row.dataset.dragging;
+
+  if (from === to) return;
+  if (commit) {
+    moveColor(from, to);
+  } else {
+    showColors();
+    list.children[from].querySelector(".row-grip").focus({ preventScroll: true });
+  }
+}
+
+list.addEventListener("pointermove", (event) => {
+  if (colorDrag?.pointerId !== event.pointerId) return;
+  const { from, to, row, startY, rowHeight } = colorDrag;
+  const distance = event.clientY - list.getBoundingClientRect().top - startY;
+  const next = clamp(from + Math.round(distance / rowHeight), 0, colors.length - 1);
+  if (next === to) return;
+  const sibling = list.children[next + (next > to ? 1 : 0)] ?? null;
+  list.insertBefore(row, sibling);
+  colorDrag.to = next;
+});
+list.addEventListener("pointerup", (event) => finishColorDrag(event, true));
+list.addEventListener("lostpointercapture", (event) => finishColorDrag(event, false));
+
+function makeRowGrip(row, index) {
+  const grip = document.createElement("button");
+  grip.type = "button";
+  grip.className = "icon row-grip";
+  grip.title = "Drag to reorder";
+  grip.setAttribute("aria-label", "Reorder color " + (index + 1) + ". Use Up and Down to move.");
+  grip.append(rowIcon("grip"));
+
+  grip.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || !event.isPrimary || colorDrag) return;
+    colorDrag = {
+      pointerId: event.pointerId,
+      row,
+      from: index,
+      to: index,
+      startY: event.clientY - list.getBoundingClientRect().top,
+      rowHeight: row.getBoundingClientRect().height,
+    };
+    row.dataset.dragging = "";
+    list.setPointerCapture(event.pointerId);
+  });
+  grip.addEventListener("keydown", (event) => {
+    if (colorDrag || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    event.preventDefault();
+    const next = clamp(index + (event.key === "ArrowUp" ? -1 : 1), 0, colors.length - 1);
+    if (next !== index) moveColor(index, next);
+  });
+  return grip;
+}
+
 function showColors() {
+  if (colorDrag) {
+    const { pointerId } = colorDrag;
+    colorDrag = undefined;
+    if (list.hasPointerCapture(pointerId)) list.releasePointerCapture(pointerId);
+  }
   if (picker.matches(":popover-open")) picker.hidePopover();
   list.replaceChildren();
   pointLayer.replaceChildren(...colors.map((_, index) => makePointHandle(index)));
@@ -504,11 +578,24 @@ function showColors() {
     field.setAttribute("aria-label", "Hex value for color " + (index + 1));
 
     const remove = document.createElement("button");
-    remove.className = "icon remove";
+    remove.type = "button";
+    remove.className = "icon";
     remove.setAttribute("aria-label", "Remove color " + (index + 1));
     remove.title = "Remove color";
     remove.disabled = colors.length <= 2;
-    remove.append(removeIcon());
+    remove.append(rowIcon("minus"));
+
+    const duplicate = document.createElement("button");
+    duplicate.type = "button";
+    duplicate.className = "icon";
+    duplicate.setAttribute("aria-label", "Duplicate color " + (index + 1));
+    duplicate.title = "Duplicate color";
+    duplicate.disabled = colors.length >= maxColors;
+    duplicate.append(rowIcon("plus"));
+
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    actions.append(remove, duplicate);
 
     const setColor = (color) => {
       colors[index] = color;
@@ -536,7 +623,14 @@ function showColors() {
       showColors();
       list.children[Math.min(index, colors.length - 1)].querySelector(".hex").focus();
     });
-    row.append(swatch, field, remove);
+    duplicate.addEventListener("click", () => {
+      movedPoints.length = colors.length;
+      colors.splice(index + 1, 0, colors[index]);
+      movedPoints.splice(index + 1, 0, undefined);
+      showColors();
+      list.children[index + 1].querySelector(".hex").focus();
+    });
+    row.append(makeRowGrip(row, index), swatch, field, actions);
     list.append(row);
   });
   queuePreview();
