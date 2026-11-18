@@ -6,8 +6,8 @@
   <meta name="description" content="Turn photos into editable mesh gradients and export them as PNGs.">
   <title>Image to Mesh Gradient</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=7">
-  <script type="module" src="gradient.js?v=8"></script>
+  <link rel="stylesheet" href="styles.css?v=9">
+  <script type="module" src="gradient.js?v=9"></script>
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -165,18 +165,14 @@
             <label class="setting">Loop length<select id="animate-duration"><option value="3">3 seconds</option><option value="5" selected>5 seconds</option><option value="8">8 seconds</option></select></label>
           </fieldset>
           <div class="animation-export">
-            <label class="setting">Format<select id="animate-format"><option value="gif">GIF</option><option value="mp4">MP4</option></select></label>
-            <label class="setting">Resolution<select id="animate-resolution"><option value="320">320 px</option><option value="480" selected>480 px</option><option value="640">640 px</option></select></label>
-            <p class="control-note">Resolution sets the longest side. GIF loops continuously. MP4 availability depends on your browser.</p>
-            <button id="render-animation" class="render-button" disabled>Render animation</button>
-            <button id="cancel-animation" class="render-button" hidden>Cancel render</button>
-            <p id="animation-status" role="status" class="control-note"></p>
+            <button id="render-animation" class="render-button" disabled>Export animation…</button>
           </div>
         </div>
       </details>
 
       <div class="panel">
         <button class="download" id="download"><svg><use href="#download-icon"/></svg>Download</button>
+        <button class="download" id="share-design">Share / load design</button>
         <p id="status" role="status" hidden></p>
       </div>
     </aside>
@@ -190,6 +186,40 @@
     </div>
   </main>
 
+  <dialog id="share-modal" aria-labelledby="share-title">
+    <div class="modal-heading"><h2 id="share-title">Share a design</h2><button type="button" data-close="share-modal" aria-label="Close">✕</button></div>
+    <p class="control-note">Copy a code or link for a friend, or paste a code here to load a design.</p>
+    <label for="design-code">Design code</label>
+    <textarea id="design-code" rows="5" spellcheck="false"></textarea>
+    <div class="modal-actions"><button id="copy-code">Copy code</button><button id="copy-link">Copy link</button><button id="load-code">Load design</button></div>
+    <p id="share-status" role="status" class="control-note"></p>
+  </dialog>
+  <dialog id="export-modal" aria-labelledby="export-title">
+    <div class="modal-heading"><h2 id="export-title">Export animation</h2><button id="close-export" type="button" data-close="export-modal" aria-label="Close">✕</button></div>
+    <fieldset id="export-options">
+      <label class="setting">Format<select id="animate-format"><option value="gif">GIF</option><option value="mp4">MP4</option></select></label>
+      <label class="setting">Resolution<select id="animate-resolution"><option value="320">320 px</option><option value="480" selected>480 px</option><option value="640">640 px</option></select></label>
+      <label class="setting">Frames per second<select id="export-fps"><option value="10">10</option><option value="15" selected>15</option><option value="24">24</option></select></label>
+      <label class="setting">Start time (seconds)<input id="export-start" type="number" min="0" max="3600" step="0.1" value="0"></label>
+      <label class="setting">Duration (seconds)<input id="export-duration" type="number" min="1" max="15" step="0.1" value="5"></label>
+      <button id="export-current" type="button">Start from current moment</button>
+      <label class="setting">Canvas area<select id="export-area"><option value="full">Full canvas</option><option value="center">Center square</option><option value="custom">Custom crop</option></select></label>
+      <fieldset id="crop-options" disabled>
+        <legend>Crop (% of canvas)</legend>
+        <div class="crop-fields">
+          <label>Left<input id="crop-x" type="number" min="0" max="99" value="0"></label>
+          <label>Top<input id="crop-y" type="number" min="0" max="99" value="0"></label>
+          <label>Width<input id="crop-width" type="number" min="1" max="100" value="100"></label>
+          <label>Height<input id="crop-height" type="number" min="1" max="100" value="100"></label>
+        </div>
+      </fieldset>
+      <label class="setting">Loop GIF<input id="export-loop" type="checkbox" checked></label>
+      <p class="control-note">Resolution sets the longest side of the crop. MP4 requires browser support and records in real time. A whole number of motion cycles gives the smoothest loop.</p>
+    </fieldset>
+    <button id="start-export" class="render-button">Render & download</button>
+    <button id="cancel-animation" class="render-button" hidden>Cancel render</button>
+    <p id="animation-status" role="status" class="control-note"></p>
+  </dialog>
   <footer>
     <span class="brand"><img src="icon.svg" width="24" height="24" alt="">Photo Gradient</span>
     <a href="https://www.figma.com/community/plugin/1438020299097238961/photo-gradient">Try the Figma Plugin</a>

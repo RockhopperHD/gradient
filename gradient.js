@@ -984,7 +984,8 @@ function animatedWarp(time) {
 function updateAnimationControls() {
   byId("animation-controls").disabled = !animationEnabled.checked;
   const unsupported = byId("animate-format").value === "mp4" && !mp4Type;
-  renderAnimation.disabled = !animationEnabled.checked || unsupported;
+  renderAnimation.disabled = !animationEnabled.checked;
+  byId("start-export").disabled = unsupported;
   animationStatus.textContent = unsupported ? "MP4 encoding is unavailable in this browser. Choose GIF to export." : "";
   for (const slider of byId("animation-controls").querySelectorAll('input[type="range"]')) fillSlider(slider);
   queuePreview();
@@ -1018,20 +1019,19 @@ function saveAnimation(blob, extension) {
 
 const yieldRender = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function encodeGif(output, w, h, duration) {
+async function encodeGif(output, w, h, config) {
   const gif = GIFEncoder();
-  const fps = 15;
-  const count = duration * fps;
+  const { fps, duration } = config;
+  const count = Math.round(duration * fps);
   for (let frame = 0; frame < count; frame++) {
     if (cancelAnimation) return;
-    render(output, w, h, frame / fps);
+    renderExportFrame(output, w, h, config.start + frame / fps, config);
     const context = output.getContext("2d");
-    drawGrid(context, dimension(width), dimension(height));
     const pixels = context.getImageData(0, 0, w, h).data;
     const palette = quantize(pixels, 256);
     gif.writeFrame(applyPalette(pixels, palette), w, h, {
       palette, delay: Math.round((frame + 1) * 1000 / fps) - Math.round(frame * 1000 / fps),
-      repeat: 0,
+      repeat: config.loop ? 0 : -1,
     });
     animationStatus.textContent = "Rendering GIF " + Math.round((frame + 1) / count * 100) + "%";
     await yieldRender();
@@ -1040,9 +1040,9 @@ async function encodeGif(output, w, h, duration) {
   saveAnimation(new Blob([gif.bytes()], { type: "image/gif" }), "gif");
 }
 
-async function encodeMp4(output, w, h, duration) {
-  render(output, w, h, 0);
-  drawGrid(output.getContext("2d"), dimension(width), dimension(height));
+async function encodeMp4(output, w, h, config) {
+  const { duration, fps } = config;
+  renderExportFrame(output, w, h, config.start, config);
   const stream = output.captureStream(0);
   const track = stream.getVideoTracks()[0];
   const recorder = new MediaRecorder(stream, { mimeType: mp4Type, videoBitsPerSecond: 4000000 });
@@ -1060,11 +1060,10 @@ async function encodeMp4(output, w, h, duration) {
     while (!cancelAnimation && recorder.state === "recording") {
       const elapsed = (performance.now() - start) / 1000;
       if (elapsed >= duration) break;
-      render(output, w, h, elapsed);
-      drawGrid(output.getContext("2d"), dimension(width), dimension(height));
+      renderExportFrame(output, w, h, config.start + elapsed, config);
       track.requestFrame();
       animationStatus.textContent = "Recording MP4 " + Math.round(elapsed / duration * 100) + "%";
-      await new Promise((resolve) => setTimeout(resolve, 1000 / 24));
+      await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
     }
     if (recorder.state !== "inactive") recorder.stop();
     await done;
@@ -1078,42 +1077,201 @@ async function encodeMp4(output, w, h, duration) {
   }
 }
 
-renderAnimation.addEventListener("click", async () => {
+const exportModal = byId("export-modal");
+for (const button of document.querySelectorAll("[data-close]")) {
+  button.addEventListener("click", () => byId(button.dataset.close).close());
+}
+renderAnimation.addEventListener("click", () => {
+  byId("export-start").value = "0";
+  byId("export-duration").value = byId("animate-duration").value;
+  updateAnimationControls();
+  exportModal.showModal();
+});
+byId("export-current").addEventListener("click", () => {
+  byId("export-start").value = (animationTime % Number(byId("animate-duration").value)).toFixed(1);
+});
+byId("export-area").addEventListener("input", () => {
+  byId("crop-options").disabled = byId("export-area").value !== "custom";
+});
+byId("animate-format").addEventListener("input", updateAnimationControls);
+exportModal.addEventListener("cancel", (event) => {
+  if (exportingAnimation) { event.preventDefault(); cancelAnimation = true; }
+});
+
+function exportConfig() {
+  const fields = byId("export-options").querySelectorAll("input[type=number]");
+  for (const field of fields) {
+    if (!field.disabled && !field.checkValidity()) {
+      field.reportValidity();
+      throw new Error("Check the export settings.");
+    }
+  }
+  let crop = { x: 0, y: 0, width: 1, height: 1 };
+  const ratio = dimension(width) / dimension(height);
+  if (byId("export-area").value === "center") {
+    crop.width = Math.min(1, 1 / ratio);
+    crop.height = Math.min(1, ratio);
+    crop.x = (1 - crop.width) / 2;
+    crop.y = (1 - crop.height) / 2;
+  } else if (byId("export-area").value === "custom") {
+    crop = { x: byId("crop-x").valueAsNumber / 100, y: byId("crop-y").valueAsNumber / 100,
+      width: byId("crop-width").valueAsNumber / 100, height: byId("crop-height").valueAsNumber / 100 };
+    if (crop.x + crop.width > 1 || crop.y + crop.height > 1) throw new Error("The crop must fit inside the canvas.");
+  }
+  return { crop, start: byId("export-start").valueAsNumber,
+    duration: byId("export-duration").valueAsNumber, fps: Number(byId("export-fps").value),
+    loop: byId("export-loop").checked, source: document.createElement("canvas") };
+}
+
+function renderExportFrame(output, w, h, time, config) {
+  const { crop, source } = config;
+  // Render the full composition before cropping so grid and point coordinates stay aligned.
+  const sourceWidth = Math.max(2, Math.round(w / crop.width));
+  const sourceHeight = Math.max(2, Math.round(h / crop.height));
+  if (sourceWidth * sourceHeight > 16777216) throw new Error("Choose a larger crop or lower resolution.");
+  render(source, sourceWidth, sourceHeight, time);
+  drawGrid(source.getContext("2d"), dimension(width), dimension(height));
+  if (output.width !== w) output.width = w;
+  if (output.height !== h) output.height = h;
+  output.getContext("2d").drawImage(source, crop.x * sourceWidth, crop.y * sourceHeight,
+    crop.width * sourceWidth, crop.height * sourceHeight, 0, 0, w, h);
+}
+
+byId("start-export").addEventListener("click", async () => {
   if (exportingAnimation) return;
+  let config;
+  try { config = exportConfig(); }
+  catch (error) { animationStatus.textContent = error.message; return; }
   exportingAnimation = true;
   cancelAnimation = false;
   if (picker.matches(":popover-open")) picker.hidePopover();
-  const locked = Array.from(document.querySelectorAll(".sidebar details, .sidebar > .panel:last-child, .preview-stage"));
-  locked.forEach((element) => { element.inert = true; });
-  // Keep only cancellation interactive while settings are frozen.
-  byId("cancel-animation").hidden = false;
-  const cancelHost = cancelRender.parentElement;
-  document.body.append(cancelRender);
-  cancelRender.classList.add("cancel-floating");
+  byId("export-options").disabled = true;
+  byId("start-export").disabled = true;
+  byId("close-export").disabled = true;
+  cancelRender.hidden = false;
   animationStatus.textContent = "Preparing animation…";
   try {
     const maxSide = Number(byId("animate-resolution").value);
-    const ratio = dimension(width) / dimension(height);
-    // Even dimensions support H.264 video encoding.
+    const ratio = dimension(width) * config.crop.width / (dimension(height) * config.crop.height);
     const w = Math.max(2, Math.round((ratio >= 1 ? maxSide : maxSide * ratio) / 2) * 2);
     const h = Math.max(2, Math.round((ratio >= 1 ? maxSide / ratio : maxSide) / 2) * 2);
     const output = document.createElement("canvas");
-    const duration = Number(byId("animate-duration").value);
-    if (byId("animate-format").value === "gif") await encodeGif(output, w, h, duration);
-    else await encodeMp4(output, w, h, duration);
+    if (byId("animate-format").value === "gif") await encodeGif(output, w, h, config);
+    else await encodeMp4(output, w, h, config);
     animationStatus.textContent = cancelAnimation ? "Render cancelled." : "Animation downloaded.";
   } catch (error) {
     animationStatus.textContent = "Export failed. " + error.message;
   } finally {
     exportingAnimation = false;
     cancelRender.hidden = true;
-    cancelRender.classList.remove("cancel-floating");
-    cancelHost.append(cancelRender);
-    locked.forEach((element) => { element.inert = false; });
+    byId("export-options").disabled = false;
+    byId("close-export").disabled = false;
+    byId("start-export").disabled = byId("animate-format").value === "mp4" && !mp4Type;
     animationStart = performance.now() - animationTime * 1000;
   }
 });
 
+const shareModal = byId("share-modal");
+const shareStatus = byId("share-status");
+const designFields = Array.from(document.querySelectorAll(".sidebar input[id], .sidebar select[id]"))
+  .filter((field) => field.type !== "file" && !field.classList.contains("hex") && field.id !== "picker-hue");
+const designFieldMap = new Map(designFields.map((field) => [field.id, field]));
+
+function designCode() {
+  const values = Object.fromEntries(designFields.map((field) =>
+    [field.id, field.type === "checkbox" ? field.checked : field.value]));
+  const design = { version: 1, colors, points: Array.from({ length: colors.length }, (_, i) => movedPoints[i] ?? null),
+    gridColors, customBorderThickness: customBorderThickness ?? null, values };
+  return "GRAD1." + btoa(JSON.stringify(design)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function restoreDesign(code) {
+  if (exportingAnimation) throw new Error("Finish or cancel the export before loading a design.");
+  const raw = code.trim().includes("#design=") ? code.trim().split("#design=")[1] : code.trim();
+  if (raw.length > 30000 || !raw.startsWith("GRAD1.")) throw new Error("Paste a valid Gradient design code or share link.");
+  const design = JSON.parse(atob(raw.slice(6).replaceAll("-", "+").replaceAll("_", "/")));
+  const validHex = (color) => typeof color === "string" && /^[0-9A-F]{6}$/.test(color);
+  if (design.version !== 1 || !Array.isArray(design.colors) || design.colors.length < 2
+    || design.colors.length > maxColors || !design.colors.every(validHex)
+    || !Array.isArray(design.points) || design.points.length !== design.colors.length
+    || !design.points.every((point) => point === null || (point && Number.isFinite(point.x)
+      && Number.isFinite(point.y) && point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1))
+    || !design.gridColors || !validHex(design.gridColors.line) || !validHex(design.gridColors.dot)
+    || !design.values || typeof design.values !== "object") throw new Error("This design code is invalid.");
+  if (Object.keys(design.values).length !== designFields.length) throw new Error("This design is missing settings.");
+  const updates = [];
+  for (const [id, value] of Object.entries(design.values)) {
+    const field = designFieldMap.get(id);
+    if (!field) throw new Error("This design uses unsupported settings.");
+    if (field.type === "checkbox") {
+      if (typeof value !== "boolean") throw new Error("Invalid toggle setting.");
+    } else if (field.tagName === "SELECT") {
+      if (!Array.from(field.options).some((option) => option.value === value)) throw new Error("Invalid menu setting.");
+    } else {
+      const number = Number(value);
+      if (typeof value !== "string" || value === "" || !Number.isFinite(number)
+        || number < Number(field.min) || number > Number(field.max)) throw new Error("Invalid numeric setting.");
+    }
+    updates.push([field, value]);
+  }
+  const savedBorder = design.customBorderThickness;
+  if (savedBorder !== null && (typeof savedBorder !== "string" || !Number.isFinite(Number(savedBorder))
+    || Number(savedBorder) < 0 || Number(savedBorder) > 24)) throw new Error("Invalid border thickness.");
+  // Apply only after all inputs have passed validation.
+  colors = design.colors.slice();
+  movedPoints.length = 0;
+  movedPoints.push(...design.points.map((point) => point === null ? undefined : { ...point }));
+  gridColors.line = design.gridColors.line;
+  gridColors.dot = design.gridColors.dot;
+  for (const [field, value] of updates) {
+    if (field.type === "checkbox") field.checked = value;
+    else field.value = value;
+  }
+  customBorderThickness = savedBorder ?? undefined;
+  for (const [key, id] of [["line", "grid-color"], ["dot", "grid-dot-color"]]) {
+    byId(id).value = gridColors[key];
+    byId(id + "-picker").style.backgroundColor = "#" + gridColors[key];
+  }
+  for (const slider of [warp, size, noise]) fillSlider(slider);
+  animationTime = 0;
+  animationStart = performance.now();
+  updateAnimationControls();
+  updateGridControls();
+  showColors();
+}
+
+byId("share-design").addEventListener("click", () => {
+  byId("design-code").value = designCode();
+  shareStatus.textContent = "";
+  shareModal.showModal();
+});
+async function copyDesign(link) {
+  try {
+    const code = designCode();
+    const text = link ? location.origin + location.pathname + "#design=" + code : code;
+    byId("design-code").value = text;
+    await navigator.clipboard.writeText(text);
+    shareStatus.textContent = link ? "Link copied." : "Code copied.";
+  } catch {
+    byId("design-code").select();
+    shareStatus.textContent = "Select and copy the text above.";
+  }
+}
+byId("copy-code").addEventListener("click", () => copyDesign(false));
+byId("copy-link").addEventListener("click", () => copyDesign(true));
+byId("load-code").addEventListener("click", () => {
+  try { restoreDesign(byId("design-code").value); shareStatus.textContent = "Design loaded."; }
+  catch (error) { shareStatus.textContent = error.message; }
+});
+function loadSharedLink() {
+  if (!location.hash.startsWith("#design=")) return;
+  try { restoreDesign(location.href); }
+  catch { setStatus("The shared design could not be loaded. Check the code and try again."); }
+}
+window.addEventListener("hashchange", loadSharedLink);
+
 updateAnimationControls();
 updateGridControls();
 showColors();
+
+loadSharedLink();
