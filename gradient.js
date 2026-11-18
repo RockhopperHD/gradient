@@ -1,3 +1,5 @@
+import { GIFEncoder, quantize, applyPalette } from "./vendor/gifenc.js";
+
 "use strict";
 
 const byId = (id) => document.getElementById(id);
@@ -265,23 +267,23 @@ function makeSampler(palette, mode, points) {
   };
 }
 
-function render(target, w, h) {
+function render(target, w, h, time = animationTime) {
   target.width = w;
   target.height = h;
   const context = target.getContext("2d", { alpha: false });
   const image = context.createImageData(w, h);
   const mode = style.value;
-  const palette = colors.map(rgb);
+  const palette = animatedColors(time).map(rgb);
   const points = palette.map((color, index) => {
     const origin = defaultPoint(index, palette.length, mode);
-    return { color, origin, position: movedPoints[index] ?? origin };
+    return { color, origin, position: animatedPosition(index, movedPoints[index] ?? origin, time) };
   });
   const baseSample = makeSampler(palette, mode, points);
   let sample = baseSample;
-  if ((mode === "Simple" || mode === "Mesh Grid") && movedPoints.some(Boolean)) {
+  if ((mode === "Simple" || mode === "Mesh Grid") && (movedPoints.some(Boolean) || byId("animate-enabled").checked)) {
     sample = withMovedPoints(baseSample, points);
   }
-  const deform = makeWarp(shape.value, Number(warp.value), Number(size.value));
+  const deform = makeWarp(shape.value, Number(warp.value) * animatedWarp(time), Number(size.value));
   const point = [0, 0];
   const grainAmount = Number(noise.value) * 255;
   const dx = 1 / Math.max(1, w - 1);
@@ -371,7 +373,7 @@ function queuePreview() {
     const w = dimension(width);
     const h = dimension(height);
     const longestSide = Math.max(w, h);
-    const scale = Math.min(1, 768 / longestSide);
+    const scale = Math.min(1, (byId("animate-enabled").checked ? 384 : 768) / longestSide);
     preview.style.width = w / longestSide * 100 + "%";
     preview.style.height = h / longestSide * 100 + "%";
     updatePointHandles();
@@ -398,7 +400,7 @@ function rowIcon(pathData) {
 function updatePointHandles() {
   colors.forEach((color, index) => {
     const handle = pointLayer.children[index];
-    const position = movedPoints[index] ?? defaultPoint(index, colors.length, style.value);
+    const position = animatedPosition(index, movedPoints[index] ?? defaultPoint(index, colors.length, style.value), animationTime);
     handle.style.left = position.x * 100 + "%";
     handle.style.top = position.y * 100 + "%";
     handle.style.setProperty("--point-color", "#" + color);
@@ -857,8 +859,13 @@ for (const [key, id] of [["line", "grid-color"], ["dot", "grid-dot-color"]]) {
   });
 }
 
-for (const panel of document.querySelectorAll('details[name="canvas-panel"]')) {
+const panels = Array.from(document.querySelectorAll('details[name="canvas-panel"]'));
+for (const panel of panels) {
+  panel.querySelector("summary").addEventListener("click", (event) => {
+    if (panel.open) event.preventDefault();
+  });
   panel.addEventListener("toggle", () => {
+    if (!panels.some((item) => item.open)) panel.open = true;
     if (!panel.open && picker.matches(":popover-open") && panel.contains(activePicker?.swatch)) {
       picker.hidePopover();
     }
@@ -922,5 +929,191 @@ download.addEventListener("click", () => {
   }
 });
 
+let animationTime = 0;
+let animationStart = performance.now();
+let lastAnimationFrame = 0;
+let exportingAnimation = false;
+let cancelAnimation = false;
+const animationEnabled = byId("animate-enabled");
+const animationStatus = byId("animation-status");
+const renderAnimation = byId("render-animation");
+const cancelRender = byId("cancel-animation");
+const mp4Type = typeof MediaRecorder === "undefined" ? undefined
+  : ["video/mp4;codecs=avc1.42001f", "video/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
+
+function animationPhase(time) {
+  return time / Number(byId("animate-duration").value) * Number(byId("animate-speed").value) * Math.PI * 2;
+}
+
+function animatedPosition(index, origin, time) {
+  if (!animationEnabled.checked || !byId("animate-points").checked) return origin;
+  const phase = animationPhase(time);
+  const seed = index * 2.39996;
+  const travel = Number(byId("animate-travel").value);
+  let dx = Math.cos(phase + seed) - Math.cos(seed);
+  let dy = Math.sin(phase + seed) - Math.sin(seed);
+  if (byId("animate-motion").value === "Drift") {
+    dx = Math.sin(phase + seed) - Math.sin(seed);
+    dy = (Math.cos(2 * phase + seed) - Math.cos(seed)) * 0.5;
+  } else if (byId("animate-motion").value === "Wave") {
+    dx = Math.sin(phase) * Math.cos(seed);
+    dy = Math.sin(phase + seed) - Math.sin(seed);
+  }
+  const overlap = Number(byId("animate-overlap").value) * (1 - Math.cos(phase)) / 2;
+  // Ease toward the center to increase overlap, while keeping points in bounds.
+  return {
+    x: clamp(mix(origin.x, 0.5, overlap) + dx * travel),
+    y: clamp(mix(origin.y, 0.5, overlap) + dy * travel),
+  };
+}
+
+function animatedColors(time) {
+  if (!animationEnabled.checked || !byId("animate-hues").checked) return colors;
+  return colors.map((color) => {
+    const hsv = toHsv(color);
+    hsv.hue = (hsv.hue + animationPhase(time) * 180 / Math.PI) % 360;
+    return fromHsv(hsv);
+  });
+}
+
+function animatedWarp(time) {
+  return animationEnabled.checked && byId("animate-warp").checked
+    ? 0.7 + 0.3 * Math.cos(animationPhase(time)) : 1;
+}
+
+function updateAnimationControls() {
+  byId("animation-controls").disabled = !animationEnabled.checked;
+  const unsupported = byId("animate-format").value === "mp4" && !mp4Type;
+  renderAnimation.disabled = !animationEnabled.checked || unsupported;
+  animationStatus.textContent = unsupported ? "MP4 encoding is unavailable in this browser. Choose GIF to export." : "";
+  for (const slider of byId("animation-controls").querySelectorAll('input[type="range"]')) fillSlider(slider);
+  queuePreview();
+}
+for (const control of document.querySelectorAll(".animation-settings input, .animation-settings select")) {
+  control.addEventListener("input", updateAnimationControls);
+}
+animationEnabled.addEventListener("input", () => {
+  animationStart = performance.now();
+  animationTime = 0;
+});
+function animatePreview(now) {
+  if (animationEnabled.checked && !exportingAnimation && now - lastAnimationFrame >= 1000 / 15) {
+    animationTime = (now - animationStart) / 1000;
+    lastAnimationFrame = now;
+    queuePreview();
+  }
+  requestAnimationFrame(animatePreview);
+}
+requestAnimationFrame(animatePreview);
+cancelRender.addEventListener("click", () => { cancelAnimation = true; });
+
+function saveAnimation(blob, extension) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "gradient-animation." + extension;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+const yieldRender = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+async function encodeGif(output, w, h, duration) {
+  const gif = GIFEncoder();
+  const fps = 15;
+  const count = duration * fps;
+  for (let frame = 0; frame < count; frame++) {
+    if (cancelAnimation) return;
+    render(output, w, h, frame / fps);
+    const context = output.getContext("2d");
+    drawGrid(context, dimension(width), dimension(height));
+    const pixels = context.getImageData(0, 0, w, h).data;
+    const palette = quantize(pixels, 256);
+    gif.writeFrame(applyPalette(pixels, palette), w, h, {
+      palette, delay: Math.round((frame + 1) * 1000 / fps) - Math.round(frame * 1000 / fps),
+      repeat: 0,
+    });
+    animationStatus.textContent = "Rendering GIF " + Math.round((frame + 1) / count * 100) + "%";
+    await yieldRender();
+  }
+  gif.finish();
+  saveAnimation(new Blob([gif.bytes()], { type: "image/gif" }), "gif");
+}
+
+async function encodeMp4(output, w, h, duration) {
+  render(output, w, h, 0);
+  drawGrid(output.getContext("2d"), dimension(width), dimension(height));
+  const stream = output.captureStream(0);
+  const track = stream.getVideoTracks()[0];
+  const recorder = new MediaRecorder(stream, { mimeType: mp4Type, videoBitsPerSecond: 4000000 });
+  const chunks = [];
+  const done = new Promise((resolve, reject) => {
+    recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+    recorder.onstop = resolve;
+    recorder.onerror = (event) => reject(event.error || new Error("MP4 encoding failed."));
+  });
+  // Attach a rejection handler immediately while frames are being rendered.
+  done.catch(() => {});
+  try {
+    recorder.start();
+    const start = performance.now();
+    while (!cancelAnimation && recorder.state === "recording") {
+      const elapsed = (performance.now() - start) / 1000;
+      if (elapsed >= duration) break;
+      render(output, w, h, elapsed);
+      drawGrid(output.getContext("2d"), dimension(width), dimension(height));
+      track.requestFrame();
+      animationStatus.textContent = "Recording MP4 " + Math.round(elapsed / duration * 100) + "%";
+      await new Promise((resolve) => setTimeout(resolve, 1000 / 24));
+    }
+    if (recorder.state !== "inactive") recorder.stop();
+    await done;
+    if (!cancelAnimation) {
+      if (!chunks.length) throw new Error("The browser produced an empty video.");
+      saveAnimation(new Blob(chunks, { type: recorder.mimeType }), "mp4");
+    }
+  } finally {
+    if (recorder.state !== "inactive") recorder.stop();
+    stream.getTracks().forEach((item) => item.stop());
+  }
+}
+
+renderAnimation.addEventListener("click", async () => {
+  if (exportingAnimation) return;
+  exportingAnimation = true;
+  cancelAnimation = false;
+  if (picker.matches(":popover-open")) picker.hidePopover();
+  const locked = Array.from(document.querySelectorAll(".sidebar details, .sidebar > .panel:last-child, .preview-stage"));
+  locked.forEach((element) => { element.inert = true; });
+  // Keep only cancellation interactive while settings are frozen.
+  byId("cancel-animation").hidden = false;
+  const cancelHost = cancelRender.parentElement;
+  document.body.append(cancelRender);
+  cancelRender.classList.add("cancel-floating");
+  animationStatus.textContent = "Preparing animation…";
+  try {
+    const maxSide = Number(byId("animate-resolution").value);
+    const ratio = dimension(width) / dimension(height);
+    // Even dimensions support H.264 video encoding.
+    const w = Math.max(2, Math.round((ratio >= 1 ? maxSide : maxSide * ratio) / 2) * 2);
+    const h = Math.max(2, Math.round((ratio >= 1 ? maxSide / ratio : maxSide) / 2) * 2);
+    const output = document.createElement("canvas");
+    const duration = Number(byId("animate-duration").value);
+    if (byId("animate-format").value === "gif") await encodeGif(output, w, h, duration);
+    else await encodeMp4(output, w, h, duration);
+    animationStatus.textContent = cancelAnimation ? "Render cancelled." : "Animation downloaded.";
+  } catch (error) {
+    animationStatus.textContent = "Export failed. " + error.message;
+  } finally {
+    exportingAnimation = false;
+    cancelRender.hidden = true;
+    cancelRender.classList.remove("cancel-floating");
+    cancelHost.append(cancelRender);
+    locked.forEach((element) => { element.inert = false; });
+    animationStart = performance.now() - animationTime * 1000;
+  }
+});
+
+updateAnimationControls();
 updateGridControls();
 showColors();

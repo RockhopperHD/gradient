@@ -6,8 +6,8 @@
   <meta name="description" content="Turn photos into editable mesh gradients and export them as PNGs.">
   <title>Image to Mesh Gradient</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=6">
-  <script defer src="gradient.js?v=5"></script>
+  <link rel="stylesheet" href="styles.css?v=7">
+  <script type="module" src="gradient.js?v=7"></script>
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -147,6 +147,31 @@
               </fieldset>
             </fieldset>
           </fieldset>
+        </div>
+      </details>
+
+      <details class="panel" name="canvas-panel">
+        <summary class="panel-heading">Animate<svg aria-hidden="true"><use href="#chevron"/></svg></summary>
+        <div class="animation-settings">
+          <label class="setting">Animation<input id="animate-enabled" type="checkbox"></label>
+          <fieldset id="animation-controls" disabled>
+            <label class="setting">Move points<input id="animate-points" type="checkbox" checked></label>
+            <label class="setting">Motion<select id="animate-motion"><option>Orbit</option><option>Drift</option><option>Wave</option></select></label>
+            <label class="setting">Travel<input id="animate-travel" type="range" min="0" max="0.35" step="0.01" value="0.12"></label>
+            <label class="setting">Color overlap<input id="animate-overlap" type="range" min="0" max="0.8" step="0.05" value="0.2"></label>
+            <label class="setting">Cycle hues<input id="animate-hues" type="checkbox"></label>
+            <label class="setting">Pulse warp<input id="animate-warp" type="checkbox"></label>
+            <label class="setting">Speed<select id="animate-speed"><option value="1">1 cycle</option><option value="2">2 cycles</option><option value="3">3 cycles</option><option value="4">4 cycles</option></select></label>
+            <label class="setting">Loop length<select id="animate-duration"><option value="3">3 seconds</option><option value="5" selected>5 seconds</option><option value="8">8 seconds</option></select></label>
+          </fieldset>
+          <div class="animation-export">
+            <label class="setting">Format<select id="animate-format"><option value="gif">GIF</option><option value="mp4">MP4</option></select></label>
+            <label class="setting">Resolution<select id="animate-resolution"><option value="320">320 px</option><option value="480" selected>480 px</option><option value="640">640 px</option></select></label>
+            <p class="control-note">Resolution sets the longest side. GIF loops continuously. MP4 availability depends on your browser.</p>
+            <button id="render-animation" class="render-button" disabled>Render animation</button>
+            <button id="cancel-animation" class="render-button" hidden>Cancel render</button>
+            <p id="animation-status" role="status" class="control-note"></p>
+          </div>
         </div>
       </details>
 
