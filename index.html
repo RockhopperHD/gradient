@@ -7,7 +7,7 @@
   <title>Image to Mesh Gradient</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=7">
-  <script type="module" src="gradient.js?v=7"></script>
+  <script type="module" src="gradient.js?v=8"></script>
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -107,7 +107,7 @@
                 <output for="grid-size">48 px</output>
               </label>
               <label class="grid-setting">Thickness
-                <input id="grid-thickness" type="range" min="0.5" max="16" step="0.5" value="1">
+                <input id="grid-thickness" type="range" min="0" max="16" step="0.5" value="1">
                 <output for="grid-thickness">1 px</output>
               </label>
             </fieldset>
@@ -121,7 +121,7 @@
                 <input id="grid-match-thickness" type="checkbox" checked>
               </label>
               <label class="grid-setting">Thickness
-                <input id="grid-border-thickness" aria-label="Border thickness" type="range" min="0.5" max="24" step="0.5" value="1" disabled>
+                <input id="grid-border-thickness" aria-label="Border thickness" type="range" min="0" max="24" step="0.5" value="1" disabled>
                 <output for="grid-border-thickness">1 px</output>
               </label>
             </fieldset>

@@ -332,9 +332,9 @@ function drawGrid(context, designWidth, designHeight) {
     context.moveTo(start, y);
     context.lineTo(right, y);
   }
-  context.stroke();
+  if (gridThickness.valueAsNumber > 0) context.stroke();
 
-  if (bordered) {
+  if (bordered && border > 0) {
     context.lineWidth = border;
     context.strokeRect(start, start, right - start, bottom - start);
   }
