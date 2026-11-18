@@ -983,6 +983,7 @@ function animatedWarp(time) {
 
 function updateAnimationControls() {
   byId("animation-controls").disabled = !animationEnabled.checked;
+  byId("animate-speed-value").value = Number(byId("animate-speed").value) + "×";
   const unsupported = byId("animate-format").value === "mp4" && !mp4Type;
   renderAnimation.disabled = !animationEnabled.checked;
   byId("start-export").disabled = unsupported;
@@ -990,6 +991,13 @@ function updateAnimationControls() {
   for (const slider of byId("animation-controls").querySelectorAll('input[type="range"]')) fillSlider(slider);
   queuePreview();
 }
+let previousAnimationSpeed = Number(byId("animate-speed").value);
+byId("animate-speed").addEventListener("input", () => {
+  const nextSpeed = Number(byId("animate-speed").value);
+  animationTime *= previousAnimationSpeed / nextSpeed;
+  animationStart = performance.now() - animationTime * 1000;
+  previousAnimationSpeed = nextSpeed;
+});
 for (const control of document.querySelectorAll(".animation-settings input, .animation-settings select")) {
   control.addEventListener("input", updateAnimationControls);
 }
@@ -1235,6 +1243,7 @@ function restoreDesign(code) {
   for (const slider of [warp, size, noise]) fillSlider(slider);
   animationTime = 0;
   animationStart = performance.now();
+  previousAnimationSpeed = Number(byId("animate-speed").value);
   updateAnimationControls();
   updateGridControls();
   showColors();

@@ -6,8 +6,8 @@
   <meta name="description" content="Turn photos into editable mesh gradients and export them as PNGs.">
   <title>Image to Mesh Gradient</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=9">
-  <script type="module" src="gradient.js?v=9"></script>
+  <link rel="stylesheet" href="styles.css?v=10">
+  <script type="module" src="gradient.js?v=10"></script>
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -161,7 +161,7 @@
             <label class="setting">Color overlap<input id="animate-overlap" type="range" min="0" max="0.8" step="0.05" value="0.2"></label>
             <label class="setting">Cycle hues<input id="animate-hues" type="checkbox"></label>
             <label class="setting">Pulse warp<input id="animate-warp" type="checkbox"></label>
-            <label class="setting">Speed<select id="animate-speed"><option value="1">1 cycle</option><option value="2">2 cycles</option><option value="3">3 cycles</option><option value="4">4 cycles</option></select></label>
+            <label class="setting">Speed<span class="speed-control"><input id="animate-speed" type="range" min="0.1" max="4" step="0.1" value="1"><output id="animate-speed-value" for="animate-speed">1×</output></span></label>
             <label class="setting">Loop length<select id="animate-duration"><option value="3">3 seconds</option><option value="5" selected>5 seconds</option><option value="8">8 seconds</option></select></label>
           </fieldset>
           <div class="animation-export">
