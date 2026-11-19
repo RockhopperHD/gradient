@@ -267,11 +267,19 @@ function makeSampler(palette, mode, points) {
   };
 }
 
+const renderBuffers = new WeakMap();
+
 function render(target, w, h, time = animationTime) {
-  target.width = w;
-  target.height = h;
+  if (target.width !== w) target.width = w;
+  if (target.height !== h) target.height = h;
   const context = target.getContext("2d", { alpha: false });
-  const image = context.createImageData(w, h);
+  let buffers = renderBuffers.get(target);
+  if (!buffers || buffers.width !== w || buffers.height !== h) {
+    buffers = { width: w, height: h, image: context.createImageData(w, h),
+      coordinates: new Float32Array(w * h * 2), grain: new Float32Array(w * h) };
+    renderBuffers.set(target, buffers);
+  }
+  const image = buffers.image;
   const mode = style.value;
   const palette = animatedColors(time).map(rgb);
   const points = palette.map((color, index) => {
@@ -283,21 +291,34 @@ function render(target, w, h, time = animationTime) {
   if ((mode === "Simple" || mode === "Mesh Grid") && (movedPoints.some(Boolean) || byId("animate-enabled").checked)) {
     sample = withMovedPoints(baseSample, points);
   }
-  const deform = makeWarp(shape.value, Number(warp.value) * animatedWarp(time), Number(size.value));
+  const strength = Number(warp.value) * animatedWarp(time);
+  const coordinateKey = [shape.value, strength, size.value].join("/");
+  const grainKey = noise.value;
+  const updateCoordinates = buffers.coordinateKey !== coordinateKey;
+  const updateGrain = buffers.grainKey !== grainKey;
+  const deform = makeWarp(shape.value, strength, Number(size.value));
   const point = [0, 0];
   const grainAmount = Number(noise.value) * 255;
   const dx = 1 / Math.max(1, w - 1);
   const dy = 1 / Math.max(1, h - 1);
 
-  for (let row = 0, index = 0; row < h; row++) {
+  for (let row = 0, pixel = 0; row < h; row++) {
     const y = row * dy;
-    for (let column = 0; column < w; column++, index += 4) {
-      const x = column * dx;
-      deform(x, y, point);
-      sample(point[0], point[1], image.data, index, (hash(column, row) - 0.5) * grainAmount);
-      image.data[index + 3] = 255;
+    for (let column = 0; column < w; column++, pixel++) {
+      const coordinate = pixel * 2;
+      if (updateCoordinates) {
+        deform(column * dx, y, point);
+        buffers.coordinates[coordinate] = point[0];
+        buffers.coordinates[coordinate + 1] = point[1];
+      }
+      if (updateGrain) buffers.grain[pixel] = (hash(column, row) - 0.5) * grainAmount;
+      sample(buffers.coordinates[coordinate], buffers.coordinates[coordinate + 1],
+        image.data, pixel * 4, buffers.grain[pixel]);
+      image.data[pixel * 4 + 3] = 255;
     }
   }
+  buffers.coordinateKey = coordinateKey;
+  buffers.grainKey = grainKey;
   context.putImageData(image, 0, 0);
 }
 
@@ -359,26 +380,47 @@ function drawGrid(context, designWidth, designHeight) {
 }
 
 function renderGridPreview(w, h) {
-  if (gridCanvas.width !== canvas.width) gridCanvas.width = canvas.width;
-  if (gridCanvas.height !== canvas.height) gridCanvas.height = canvas.height;
+  const scale = Math.min(1, 768 / Math.max(w, h));
+  const gridWidth = Math.max(1, Math.round(w * scale));
+  const gridHeight = Math.max(1, Math.round(h * scale));
+  if (gridCanvas.width !== gridWidth) gridCanvas.width = gridWidth;
+  if (gridCanvas.height !== gridHeight) gridCanvas.height = gridHeight;
   const context = gridCanvas.getContext("2d");
   context.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
   drawGrid(context, w, h);
+}
+
+let animationPreviewSize = 256;
+let gridPreviewKey = "";
+
+function renderPreview() {
+  const w = dimension(width);
+  const h = dimension(height);
+  const longestSide = Math.max(w, h);
+  const animated = animationEnabled.checked;
+  const scale = Math.min(1, (animated ? animationPreviewSize : 768) / longestSide);
+  preview.style.width = w / longestSide * 100 + "%";
+  preview.style.height = h / longestSide * 100 + "%";
+  updatePointHandles();
+  const started = performance.now();
+  render(canvas, Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
+  if (animated) {
+    const elapsed = performance.now() - started;
+    if (elapsed > 18) animationPreviewSize = Math.max(128, animationPreviewSize * 0.85);
+    else if (elapsed < 8) animationPreviewSize = Math.min(384, animationPreviewSize + 4);
+  }
+  const nextGridKey = w + "/" + h;
+  if (gridPreviewKey !== nextGridKey) {
+    gridPreviewKey = nextGridKey;
+    renderGridPreview(w, h);
+  }
 }
 
 function queuePreview() {
   if (pendingFrame) return;
   pendingFrame = requestAnimationFrame(() => {
     pendingFrame = 0;
-    const w = dimension(width);
-    const h = dimension(height);
-    const longestSide = Math.max(w, h);
-    const scale = Math.min(1, (byId("animate-enabled").checked ? 384 : 768) / longestSide);
-    preview.style.width = w / longestSide * 100 + "%";
-    preview.style.height = h / longestSide * 100 + "%";
-    updatePointHandles();
-    render(canvas, Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale)));
-    renderGridPreview(w, h);
+    renderPreview();
   });
 }
 
@@ -931,7 +973,6 @@ download.addEventListener("click", () => {
 
 let animationTime = 0;
 let animationStart = performance.now();
-let lastAnimationFrame = 0;
 let exportingAnimation = false;
 let cancelAnimation = false;
 const animationEnabled = byId("animate-enabled");
@@ -1006,10 +1047,13 @@ animationEnabled.addEventListener("input", () => {
   animationTime = 0;
 });
 function animatePreview(now) {
-  if (animationEnabled.checked && !exportingAnimation && now - lastAnimationFrame >= 1000 / 15) {
+  if (animationEnabled.checked && !exportingAnimation && !document.hidden) {
     animationTime = (now - animationStart) / 1000;
-    lastAnimationFrame = now;
-    queuePreview();
+    if (pendingFrame) {
+      cancelAnimationFrame(pendingFrame);
+      pendingFrame = 0;
+    }
+    renderPreview();
   }
   requestAnimationFrame(animatePreview);
 }
