@@ -6,8 +6,8 @@
   <meta name="description" content="Turn photos into editable mesh gradients and export them as PNGs.">
   <title>Image to Mesh Gradient</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=10">
-  <script type="module" src="gradient.js?v=11"></script>
+  <link rel="stylesheet" href="styles.css?v=12">
+  <script type="module" src="gradient.js?v=12"></script>
 </head>
 <body>
   <svg xmlns="http://www.w3.org/2000/svg" class="symbols" aria-hidden="true">
@@ -17,6 +17,18 @@
     <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="download-icon" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></symbol>
   </svg>
+  <section id="home-screen" class="home-screen" aria-labelledby="home-title">
+    <div class="home-content">
+      <p class="home-eyebrow">Creative tools</p>
+      <h1 id="home-title">Make something colorful.</h1>
+      <a class="tool-card" href="#gradient">
+        <span class="tool-art" aria-hidden="true"></span>
+        <span class="tool-copy"><strong>Gradient</strong><span>Create gradients, add grids, and bring colors to life.</span><b>Open Gradient ↗</b></span>
+      </a>
+    </div>
+  </section>
+  <div id="editor-screen" hidden>
+  <nav class="editor-nav"><a href="#home">← Home</a></nav>
   <main class="workspace">
     <div class="preview-stage">
       <div class="preview" id="preview">
@@ -164,6 +176,7 @@
             <label class="setting">Speed<span class="speed-control"><input id="animate-speed" type="range" min="0.1" max="4" step="0.1" value="1"><output id="animate-speed-value" for="animate-speed">1×</output></span></label>
             <label class="setting">Loop length<select id="animate-duration"><option value="3">3 seconds</option><option value="5" selected>5 seconds</option><option value="8">8 seconds</option></select></label>
           </fieldset>
+          <p class="control-note">Live playback adapts preview quality for smoother motion. Export quality is set separately.</p>
           <div class="animation-export">
             <button id="render-animation" class="render-button" disabled>Export animation…</button>
           </div>
@@ -185,6 +198,7 @@
       <input id="picker-hue" type="range" min="0" max="359" step="1" aria-label="Hue">
     </div>
   </main>
+  </div>
 
   <dialog id="share-modal" aria-labelledby="share-title">
     <div class="modal-heading"><h2 id="share-title">Share a design</h2><button type="button" data-close="share-modal" aria-label="Close">✕</button></div>
@@ -198,7 +212,7 @@
     <div class="modal-heading"><h2 id="export-title">Export animation</h2><button id="close-export" type="button" data-close="export-modal" aria-label="Close">✕</button></div>
     <fieldset id="export-options">
       <label class="setting">Format<select id="animate-format"><option value="gif">GIF</option><option value="mp4">MP4</option></select></label>
-      <label class="setting">Resolution<select id="animate-resolution"><option value="320">320 px</option><option value="480" selected>480 px</option><option value="640">640 px</option></select></label>
+      <label class="setting">Resolution<select id="animate-resolution"><option value="320">320 px</option><option value="480">480 px</option><option value="640">640 px</option><option value="960">960 px</option><option value="original" selected>Canvas dimensions</option></select></label>
       <label class="setting">Frames per second<select id="export-fps"><option value="10">10</option><option value="15" selected>15</option><option value="24">24</option></select></label>
       <label class="setting">Start time (seconds)<input id="export-start" type="number" min="0" max="3600" step="0.1" value="0"></label>
       <label class="setting">Duration (seconds)<input id="export-duration" type="number" min="1" max="15" step="0.1" value="5"></label>
@@ -213,8 +227,10 @@
           <label>Height<input id="crop-height" type="number" min="1" max="100" value="100"></label>
         </div>
       </fieldset>
+      <label class="setting">Perfect loop<input id="export-perfect-loop" type="checkbox"></label>
+      <p id="perfect-loop-note" class="control-note">Perfect loop fits complete motion cycles into your duration, slightly adjusting export speed when needed.</p>
       <label class="setting">Loop GIF<input id="export-loop" type="checkbox" checked></label>
-      <p class="control-note">Resolution sets the longest side of the crop. MP4 requires browser support and records in real time. A whole number of motion cycles gives the smoothest loop.</p>
+      <p class="control-note">Canvas dimensions exports at your design’s full resolution. Other sizes set the longest side of the crop. MP4 requires browser support and records in real time. A whole number of motion cycles gives the smoothest loop.</p>
     </fieldset>
     <button id="start-export" class="render-button">Render & download</button>
     <button id="cancel-animation" class="render-button" hidden>Cancel render</button>

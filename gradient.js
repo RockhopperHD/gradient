@@ -1047,7 +1047,7 @@ animationEnabled.addEventListener("input", () => {
   animationTime = 0;
 });
 function animatePreview(now) {
-  if (animationEnabled.checked && !exportingAnimation && !document.hidden) {
+  if (animationEnabled.checked && !exportingAnimation && !document.hidden && !byId("editor-screen").hidden) {
     animationTime = (now - animationStart) / 1000;
     if (pendingFrame) {
       cancelAnimationFrame(pendingFrame);
@@ -1077,7 +1077,7 @@ async function encodeGif(output, w, h, config) {
   const count = Math.round(duration * fps);
   for (let frame = 0; frame < count; frame++) {
     if (cancelAnimation) return;
-    renderExportFrame(output, w, h, config.start + frame / fps, config);
+    renderExportFrame(output, w, h, config.start + frame / fps * config.timeScale, config);
     const context = output.getContext("2d");
     const pixels = context.getImageData(0, 0, w, h).data;
     const palette = quantize(pixels, 256);
@@ -1145,7 +1145,12 @@ byId("export-current").addEventListener("click", () => {
 byId("export-area").addEventListener("input", () => {
   byId("crop-options").disabled = byId("export-area").value !== "custom";
 });
-byId("animate-format").addEventListener("input", updateAnimationControls);
+byId("animate-format").addEventListener("input", () => {
+  const gif = byId("animate-format").value === "gif";
+  byId("export-perfect-loop").disabled = !gif;
+  byId("export-loop").disabled = !gif;
+  updateAnimationControls();
+});
 exportModal.addEventListener("cancel", (event) => {
   if (exportingAnimation) { event.preventDefault(); cancelAnimation = true; }
 });
@@ -1170,9 +1175,14 @@ function exportConfig() {
       width: byId("crop-width").valueAsNumber / 100, height: byId("crop-height").valueAsNumber / 100 };
     if (crop.x + crop.width > 1 || crop.y + crop.height > 1) throw new Error("The crop must fit inside the canvas.");
   }
-  return { crop, start: byId("export-start").valueAsNumber,
+  const perfect = byId("animate-format").value === "gif" && byId("export-perfect-loop").checked;
+  const duration = byId("export-duration").valueAsNumber;
+  const period = Number(byId("animate-duration").value) / Number(byId("animate-speed").value);
+  const cycles = Math.max(1, Math.round(duration / period));
+  const timeScale = perfect ? cycles * period / duration : 1;
+  return { crop, timeScale, start: byId("export-start").valueAsNumber,
     duration: byId("export-duration").valueAsNumber, fps: Number(byId("export-fps").value),
-    loop: byId("export-loop").checked, source: document.createElement("canvas") };
+    loop: perfect || byId("export-loop").checked, source: document.createElement("canvas") };
 }
 
 function renderExportFrame(output, w, h, time, config) {
@@ -1203,7 +1213,10 @@ byId("start-export").addEventListener("click", async () => {
   cancelRender.hidden = false;
   animationStatus.textContent = "Preparing animation…";
   try {
-    const maxSide = Number(byId("animate-resolution").value);
+    const resolution = byId("animate-resolution").value;
+    const maxSide = resolution === "original"
+      ? Math.max(dimension(width) * config.crop.width, dimension(height) * config.crop.height)
+      : Number(resolution);
     const ratio = dimension(width) * config.crop.width / (dimension(height) * config.crop.height);
     const w = Math.max(2, Math.round((ratio >= 1 ? maxSide : maxSide * ratio) / 2) * 2);
     const h = Math.max(2, Math.round((ratio >= 1 ? maxSide / ratio : maxSide) / 2) * 2);
@@ -1321,7 +1334,17 @@ function loadSharedLink() {
   try { restoreDesign(location.href); }
   catch { setStatus("The shared design could not be loaded. Check the code and try again."); }
 }
-window.addEventListener("hashchange", loadSharedLink);
+function showRoute() {
+  const editor = location.hash === "#gradient" || location.hash.startsWith("#design=");
+  byId("home-screen").hidden = editor;
+  byId("editor-screen").hidden = !editor;
+  if (editor) queuePreview();
+}
+window.addEventListener("hashchange", () => {
+  showRoute();
+  loadSharedLink();
+});
+showRoute();
 
 updateAnimationControls();
 updateGridControls();

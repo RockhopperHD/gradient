@@ -318,3 +318,19 @@ dialog fieldset:disabled { opacity: .5; }
 
 .speed-control { display: flex; align-items: center; gap: 12px; }
 .speed-control output { min-width: 32px; text-align: right; font-size: 12px; color: #666; }
+
+[hidden] { display: none !important; }
+.home-screen { min-height: calc(100svh - 100px); display: grid; place-items: center; padding: 60px 24px; }
+.home-content { width: min(100%, 680px); }
+.home-eyebrow { color: #777; font-size: 13px; }
+.home-content h1 { font-size: clamp(32px, 6vw, 48px); letter-spacing: -1.5px; margin: 12px 0 32px; }
+.tool-card { display: flex; overflow: hidden; border: 1px solid #e4e4e4; border-radius: 20px; background: white; color: inherit; text-decoration: none; box-shadow: 0 4px 12px #0001; }
+.tool-card:hover { box-shadow: 0 8px 24px #0002; }
+.tool-art { flex: 0 0 38%; min-height: 240px; background: radial-gradient(ellipse at 15% 75%, #f96656 10%, transparent 65%), radial-gradient(ellipse at 85% 10%, #7b8e54, transparent 60%), #c6d1d1; }
+.tool-copy { display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 32px; line-height: 1.5; }
+.tool-copy strong { font-size: 24px; }
+.tool-copy > span { color: #666; }
+.tool-copy b { font-size: 13px; }
+.editor-nav { position: absolute; z-index: 2; top: 12px; left: 24px; }
+.editor-nav a { color: #666; text-decoration: none; font-size: 13px; }
+@media (max-width: 500px) { .tool-card { flex-direction: column; } .tool-art { min-height: 180px; } }
