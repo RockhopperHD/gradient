@@ -6,7 +6,7 @@
   <meta name="description" content="Turn photos into editable mesh gradients and export them as PNGs.">
   <title>Image to Mesh Gradient</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
   <script type="module" src="gradient.js?v=12"></script>
 </head>
 <body>
@@ -198,6 +198,7 @@
       <input id="picker-hue" type="range" min="0" max="359" step="1" aria-label="Hue">
     </div>
   </main>
+  <footer class="tool-attribution">This is a total ripoff and expansion of <a href="https://photogradient.com/">PhotoGradient by Daniel</a>.</footer>
   </div>
 
   <dialog id="share-modal" aria-labelledby="share-title">
@@ -236,10 +237,5 @@
     <button id="cancel-animation" class="render-button" hidden>Cancel render</button>
     <p id="animation-status" role="status" class="control-note"></p>
   </dialog>
-  <footer>
-    <span class="brand"><img src="icon.svg" width="24" height="24" alt="">Photo Gradient</span>
-    <a href="https://www.figma.com/community/plugin/1438020299097238961/photo-gradient">Try the Figma Plugin</a>
-    <span><a href="https://x.com/daniel__designs">Made by Daniel</a> © 2024</span>
-  </footer>
 </body>
 </html>

@@ -266,18 +266,14 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 button:disabled { opacity: .4; cursor: default; }
 #status { margin: 0 24px 12px; color: #963c32; line-height: 1.4; }
 .download { display: flex; align-items: center; gap: 12px; padding: 0 25px; min-height: 48px; width: 100%; text-align: left; }
-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 35px 32px;
-  border-top: 1px solid #e2e2e2;
-  color: #666;
+.tool-attribution {
+  padding: 20px 24px;
+  color: #777;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
 }
-footer a { color: inherit; text-decoration: none; }
-footer a:hover { text-decoration: underline; }
-.brand { display: flex; align-items: center; gap: 12px; color: #161616; font: bold 16px Georgia, serif; }
+.tool-attribution a { color: inherit; text-underline-offset: 3px; }
 @media (hover: none) {
   .row-grip, .row-actions { opacity: 1; pointer-events: auto; }
 }
@@ -286,7 +282,6 @@ footer a:hover { text-decoration: underline; }
   .preview-stage { width: min(100%, 520px); }
   .preview { border-radius: 24px; }
   .sidebar { flex: auto; width: min(100%, 520px); }
-  footer { flex-wrap: wrap; padding: 24px 16px; }
 }
 
 .animation-settings { padding: 4px 24px 16px; }
@@ -320,7 +315,7 @@ dialog fieldset:disabled { opacity: .5; }
 .speed-control output { min-width: 32px; text-align: right; font-size: 12px; color: #666; }
 
 [hidden] { display: none !important; }
-.home-screen { min-height: calc(100svh - 100px); display: grid; place-items: center; padding: 60px 24px; }
+.home-screen { min-height: 100svh; display: grid; place-items: center; padding: 60px 24px; }
 .home-content { width: min(100%, 680px); }
 .home-eyebrow { color: #777; font-size: 13px; }
 .home-content h1 { font-size: clamp(32px, 6vw, 48px); letter-spacing: -1.5px; margin: 12px 0 32px; }
